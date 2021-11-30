@@ -93,11 +93,11 @@ def read_csv_into_pandas(micro_path: str,
 #
 # In pixel and not micrometer scale
 def get_colored_vertices(df: pd.DataFrame,
-						 scale: int) -> Tuple[np.array, np.array]:
+	xy_col: Tuple[pd.DataFrame, pd.DataFrame],
+	scale: int) -> Tuple[np.array, np.array]:
 	_to_pix = 1e6 * scale
 
-	X_col = dataframe.columns[0]
-	Y_col = dataframe.columns[1]
+	X_col, Y_col = xy_col
 
 	X = dataframe[X_col].to_numpy()
 	Y = dataframe[Y_col].to_numpy()
@@ -125,14 +125,40 @@ def _get_timestep(df: pd.DataFrame, col: int) -> str:
 # Interpolates the State-of-Lithiation, which is represented by the
 # color, using the available SoL values as per the COMSOL vertices.
 def interpolate_circle_color(circle: dict[str],
+	time_col: int,
 	df: pd.DataFrame,
 	xy_col: Tuple[pd.DataFrame, pd.DataFrame],
-	grid_size: int):
+	grid_size: int,
+	scale: int) -> Tuple[MESHGRID, MESHGRID, MESHGRID]:
+
+	_to_pix = 1e6 * scale
 
 	x, y, R = circle["x"], circle["y"], circle["R"]
 
 	xx, yy = _get_inscribing_meshgrid(x, y, R, grid_size)
 	xx, yy = _get_coords_in_circle(x, y, R, (xx, yy))
+
+	# (x, y) values within the circle with values to interpolate from
+	x_vertices, y_vertices, SoL_vertices = _get_filled_vertices(df,
+		time_col,
+		x, y, R, 
+		xy_col)
+
+	interpolant_coords = np.array([x_vertices, y_vertices])
+	interpolant_coords = interpolant_coords.T
+
+	# Interpolate missing values
+	# COMSOL uses linear interpolation; citation: "..."
+	SoL_mesh = griddata(interpolant_coords, 
+		SoL_vertices,
+		(xx, yy),
+		method = 'linear')
+
+	# Converting from micrometer- to pixel-scale
+	xx = np.ceil( xx * _to_pix ).astype(np.int64) - 1
+	yy = np.ceil( yy * _to_pix ).astype(np.int64) - 1
+
+	return (xx, yy, SoL_mesh)
 
 
 ## Can refactor into common uitls
@@ -153,10 +179,11 @@ def _get_inscribing_coords(x: str,
 
 # Vertices which already has color
 def _get_filled_vertices(df: pd.DataFrame,
+	time_col: int,
 	x: str,
 	y: str,
 	R: str,
-	xy_col: Tuple[pd.DataFrame, pd.DataFrame]) -> Tuple[np.array, np.array]:
+	xy_col: Tuple[pd.DataFrame, pd.DataFrame]) -> Tuple[np.array, np.array, np.array]:
 	
 	X_col, Y_col = xy_col
 	x_min, x_max, y_min, y_max = _get_inscribing_coords(x, y, R)
@@ -167,8 +194,9 @@ def _get_filled_vertices(df: pd.DataFrame,
 	# Prefilled coordinates for the current circle
 	x_vertices = filtered_by_y[X_col].to_numpy()
 	y_vertices = filtered_by_y[Y_col].to_numpy()
+	SoL_vertices = filtered_by_y.iloc[:, time_col].to_numpy()
 
-	return (x_vertices, y_vertices)
+	return (x_vertices, y_vertices, SoL_vertices)
 
 ## Can refactor into common utils
 def _get_inscribing_meshgrid(x: str,
@@ -232,7 +260,12 @@ if __name__ == "__main__":
 				c_rate_exp,
 				settings["header_row"])
 
-			X, Y = get_colored_vertices(dataframe, scale)
+			X_col = dataframe.columns[0]
+			Y_col = dataframe.columns[1]
+
+			X, Y = get_colored_vertices(dataframe, 
+				(X_col, Y_col),
+				scale)
 
 			# Get number of columns... 2 - NUM_COLUMN is num of time steps
 			_, NUM_COL = dataframe.shape
@@ -259,11 +292,17 @@ if __name__ == "__main__":
 				# Go through list of circles in the microstructure
 				for idx in tqdm(range(len(micro["circles"]))):
 					circle_hash = micro["circles"][idx]
-					interpolate_circle_color(circle, 
+					xx, yy, SoL_mesh = interpolate_circle_color(circle_hash, 
+						t,
 						dataframe,
 						(X_col, Y_col),
-						grid_size)
+						grid_size,
+						scale)
 
+					im[yy, xx, :] = col_map(SoL_mesh)
+
+				plt.imshow(im)
+				plt.show()	
 				break
 
 			break
