@@ -2,6 +2,12 @@
 ## Create COLOUR MAPS from COMSOL Data ##
 #########################################
 
+import os
+from typing import List, Tuple
+
+# Show progress of stuff
+from tqdm import tqdm
+
 import json
 import pandas as pd
 
@@ -11,10 +17,7 @@ from matplotlib import cm
 
 from PIL import Image
 
-import os
-
-from typing import List, Tuple
-
+# Just for checking stuff for now
 import matplotlib.pyplot as plt
 
 RGB_DIM = 3
@@ -36,7 +39,7 @@ def get_micro_directories() -> List[str]:
 	micro_dirs = os.listdir(os.getcwd())
 	# Parse out directories - i.e., no png/json/ipynb files
 	micro_dirs = [file for file in micro_dirs 
-					if not any(True for substr in ['.png', '.json', '.ipynb', '.DS_Store'] 
+					if not any(True for substr in ['.png', '.json', '.ipynb', '.DS_Store', '.git', '.gitignore'] 
 					if substr in file)]
 
 	micro_dirs.sort()
@@ -110,6 +113,12 @@ def get_SoL(df: pd.DataFrame, col: int) -> np.array:
 	# column represents the timestep
 	return df.iloc[:, col]
 
+# Get the timestep, t, from the column header
+def _get_timestep(df: pd.DataFrame, col: int) -> str:
+	time = df.columns[col].split(" ")
+	time = time[-1].split("=")[-1]
+	return time
+
 if __name__ == "__main__":
 	settings = read_user_settings()
 
@@ -126,7 +135,7 @@ if __name__ == "__main__":
 	col_map = nice_cm(settings["colormap"])
 
 
-	for l, micro in enumerate(microstructures):
+	for l, micro in tqdm(enumerate(microstructures)):
 		# Get the path to the microstructure for file read/write
 		micro_path = micro_dirs[l]
 
@@ -143,7 +152,11 @@ if __name__ == "__main__":
 			# Get number of columns... 2 - NUM_COLUMN is num of time steps
 			_, NUM_COL = dataframe.shape
 
-			for t in range(2, NUM_COL):
+			for t in tqdm(range(2, NUM_COL)):
+
+				# Get the timestep from the column header
+				time = _get_timestep(dataframe, t)
+
 				# Create blank image to house SoL data from CSV files
 				im = np.zeros((h_cell * scale, L * scale, RGB_DIM))
 
@@ -152,8 +165,10 @@ if __name__ == "__main__":
 
 				# Fill in the image with the available values just to SEE
 				im[Y, X, :] = col_map(avail_sol)
-				plt.imshow(im)
-				plt.show()
+
+				# Go through list of circles in the microstructure
+				for i in tqdm(range(len(micro["circles"]))):
+					pass
 
 				break
 
