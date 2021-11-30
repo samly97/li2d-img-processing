@@ -24,6 +24,8 @@ RGB_DIM = 3
 
 GREEN = np.array([0, 128, 0])
 
+MESHGRID = Tuple[np.array, np.array]
+
 # Wrapper to avoid having to index everytime to discard the
 # transparence value when calling the colormap
 class nice_cm:
@@ -108,10 +110,11 @@ def get_colored_vertices(df: pd.DataFrame,
 
 # Gets the SoL for a particular:
 # - microstructures
-# - time associated with a c_rate
-def get_SoL(df: pd.DataFrame, col: int) -> np.array:
-	# column represents the timestep
-	return df.iloc[:, col]
+# - c_rate discharge experiment
+def get_SoL(df: pd.DataFrame) -> np.array:
+	# returns a table of State-of-Lithiation
+	# for all the timesteps in the discharge experiment
+	return df.iloc[:, 2:]
 
 # Get the timestep, t, from the column header
 def _get_timestep(df: pd.DataFrame, col: int) -> str:
@@ -217,7 +220,6 @@ if __name__ == "__main__":
 	## COLOR MAP
 	col_map = nice_cm(settings["colormap"])
 
-
 	for l, micro in tqdm(enumerate(microstructures)):
 		# Get the path to the microstructure for file read/write
 		micro_path = micro_dirs[l]
@@ -235,6 +237,10 @@ if __name__ == "__main__":
 			# Get number of columns... 2 - NUM_COLUMN is num of time steps
 			_, NUM_COL = dataframe.shape
 
+			## Can get the State-of-Lithiation for the entire experiment
+			## here to avoid inefficiencies
+			SoL_dataframe = get_SoL(dataframe)
+
 			for t in tqdm(range(2, NUM_COL)):
 
 				# Get the timestep from the column header
@@ -244,7 +250,8 @@ if __name__ == "__main__":
 				im = np.zeros((h_cell * scale, L * scale, RGB_DIM))
 
 				# SoL values from the vertices
-				avail_sol = get_SoL(dataframe, t)
+				# -2 Since the index starts from 0 now
+				avail_sol = SoL_dataframe.iloc[:, t - 2].to_numpy()
 
 				# Fill in the image with the available values just to SEE
 				im[Y, X, :] = col_map(avail_sol)
