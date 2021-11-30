@@ -189,7 +189,7 @@ def _get_filled_vertices(df: pd.DataFrame,
 	x_min, x_max, y_min, y_max = _get_inscribing_coords(x, y, R)
 
 	filtered_by_x = df[df[X_col].between(x_min, x_max)]
-	filtered_by_y = df[df[Y_col].between(y_min, y_max)]
+	filtered_by_y = filtered_by_x[filtered_by_x[Y_col].between(y_min, y_max)]
 
 	# Prefilled coordinates for the current circle
 	x_vertices = filtered_by_y[X_col].to_numpy()
@@ -231,6 +231,12 @@ def _get_coords_in_circle(x: str,
 	yy = yy[in_circ]
 
 	return (xx, yy)
+
+## Can refactor into common utils
+def save_colmap_png(micro_im: np.array,
+	fname: str):
+	im = Image.fromarray( (255 * micro_im).astype(np.uint8) )
+	im.save(fname)
 
 if __name__ == "__main__":
 	settings = read_user_settings()
@@ -301,14 +307,13 @@ if __name__ == "__main__":
 
 					im[yy, xx, :] = col_map(SoL_mesh)
 
-				plt.imshow(im)
-				plt.show()	
-				break
+				output_dir = os.path.join(micro_path, "col/")
+				try:
+					os.mkdir(output_dir)
+				except FileExistsError:
+					pass
 
-			break
-		break
-
-
-
-
+				filename = "c%s_t%s.png" % (c_rate_exp, time)
+				filename = os.path.join(output_dir, filename)
+				save_colmap_png(im, filename)
 
