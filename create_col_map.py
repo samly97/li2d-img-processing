@@ -129,7 +129,7 @@ def interpolate_circle_color(circle: dict[str],
 	df: pd.DataFrame,
 	xy_col: Tuple[pd.DataFrame, pd.DataFrame],
 	grid_size: int,
-	scale: int) -> Tuple[MESHGRID, MESHGRID, MESHGRID]:
+	scale: int) -> Tuple[np.array, np.array, np.array]:
 
 	_to_pix = 1e6 * scale
 
@@ -154,11 +154,38 @@ def interpolate_circle_color(circle: dict[str],
 		(xx, yy),
 		method = 'linear')
 
-	# Converting from micrometer- to pixel-scale
-	xx = np.ceil( xx * _to_pix ).astype(np.int64) - 1
-	yy = np.ceil( yy * _to_pix ).astype(np.int64) - 1
+	x_inter, y_inter, sol_inter = _drop_nan_from_interpolate(xy_col,
+		(xx, yy),
+		SoL_mesh)
 
-	return (xx, yy, SoL_mesh)
+	# Convert from micrometer- to pixel-scale
+	x_inter = np.ceil( x_inter * _to_pix ).astype(np.int64) - 1
+	y_inter = np.ceil( y_inter * _to_pix ).astype(np.int64) - 1
+
+	# return (xx, yy, SoL_mesh)
+	return (x_inter, y_inter, sol_inter)
+
+# This drops all NaNs in the same location
+def _drop_nan_from_interpolate(xy_col: Tuple[pd.DataFrame, pd.DataFrame],
+	meshgrid: MESHGRID,
+	SoL_interpolated: MESHGRID) -> Tuple[np.array, np.array, np.array]:
+	
+	X_col, Y_col = xy_col
+	xx, yy = meshgrid
+
+	to_drop_df = pd.DataFrame({
+		X_col: xx,
+		Y_col: yy,
+		"temp": SoL_interpolated,
+		})
+
+	to_drop_df.dropna()
+
+	x_filt = to_drop_df[X_col].to_numpy()
+	y_filt = to_drop_df[Y_col].to_numpy()
+	sol_filt = to_drop_df.iloc[:, 2].to_numpy()
+
+	return (x_filt, y_filt, sol_filt)
 
 
 ## Can refactor into common uitls
@@ -298,14 +325,14 @@ if __name__ == "__main__":
 				# Go through list of circles in the microstructure
 				for idx in tqdm(range(len(micro["circles"]))):
 					circle_hash = micro["circles"][idx]
-					xx, yy, SoL_mesh = interpolate_circle_color(circle_hash, 
+					x_inter, y_inter, sol_inter = interpolate_circle_color(circle_hash, 
 						t,
 						dataframe,
 						(X_col, Y_col),
 						grid_size,
 						scale)
 
-					im[yy, xx, :] = col_map(SoL_mesh)
+					im[y_inter, x_inter, :] = col_map(sol_inter)
 
 				output_dir = os.path.join(micro_path, "col/")
 				try:
