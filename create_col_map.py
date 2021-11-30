@@ -119,6 +119,88 @@ def _get_timestep(df: pd.DataFrame, col: int) -> str:
 	time = time[-1].split("=")[-1]
 	return time
 
+# Interpolates the State-of-Lithiation, which is represented by the
+# color, using the available SoL values as per the COMSOL vertices.
+def interpolate_circle_color(circle: dict[str],
+	df: pd.DataFrame,
+	xy_col: Tuple[pd.DataFrame, pd.DataFrame],
+	grid_size: int):
+
+	x, y, R = circle["x"], circle["y"], circle["R"]
+
+	xx, yy = _get_inscribing_meshgrid(x, y, R, grid_size)
+	xx, yy = _get_coords_in_circle(x, y, R, (xx, yy))
+
+
+## Can refactor into common uitls
+def _get_inscribing_coords(x: str,
+						   y: str,
+						   R: str) -> Tuple[float, float, float, float]:
+	# Conversion factor from um to pixels
+	_to_um = 1e-6
+
+	x, y, R = float(x), float(y), float(R)
+
+	x_min = (x - R) * _to_um
+	x_max = (x + R) * _to_um
+	y_min = (y - R) * _to_um
+	y_max = (y + R) * _to_um
+
+	return (x_min, x_max, y_min, y_max)
+
+# Vertices which already has color
+def _get_filled_vertices(df: pd.DataFrame,
+	x: str,
+	y: str,
+	R: str,
+	xy_col: Tuple[pd.DataFrame, pd.DataFrame]) -> Tuple[np.array, np.array]:
+	
+	X_col, Y_col = xy_col
+	x_min, x_max, y_min, y_max = _get_inscribing_coords(x, y, R)
+
+	filtered_by_x = df[df[X_col].between(x_min, x_max)]
+	filtered_by_y = df[df[Y_col].between(y_min, y_max)]
+
+	# Prefilled coordinates for the current circle
+	x_vertices = filtered_by_y[X_col].to_numpy()
+	y_vertices = filtered_by_y[Y_col].to_numpy()
+
+	return (x_vertices, y_vertices)
+
+## Can refactor into common utils
+def _get_inscribing_meshgrid(x: str,
+						     y: str,
+						     R: str,
+						     grid_size: int) -> MESHGRID:
+	x_min, x_max, y_min, y_max = _get_inscribing_coords(x, y, R)
+
+	x_linspace = np.linspace(x_min, x_max, grid_size)
+	y_linspace = np.linspace(y_min, y_max, grid_size)
+
+	xx, yy = np.meshgrid(x_linspace, y_linspace)
+
+	return (xx, yy)
+
+## Can refactor into common utils
+def _get_coords_in_circle(x: str, 
+						  y: str, 
+						  R: str, 
+						  meshgrid: MESHGRID) -> MESHGRID:
+	_to_um = 1e-6
+
+	xx, yy = meshgrid
+	xx = np.copy(xx)
+	yy = np.copy(yy)
+
+	x, y, R = float(x) * _to_um, float(y) * _to_um, float(R) * _to_um
+
+	in_circ = np.sqrt( (xx - x) ** 2 + (yy - y) ** 2) <= R
+
+	xx = xx[in_circ]
+	yy = yy[in_circ]
+
+	return (xx, yy)
+
 if __name__ == "__main__":
 	settings = read_user_settings()
 
@@ -126,6 +208,7 @@ if __name__ == "__main__":
 	h_cell = settings["h_cell"]
 	c_rates = settings["c_rates"]
 
+	grid_size = settings["grid_size"]
 	scale = settings["scale"]
 
 	micro_dirs = get_micro_directories()
@@ -167,8 +250,12 @@ if __name__ == "__main__":
 				im[Y, X, :] = col_map(avail_sol)
 
 				# Go through list of circles in the microstructure
-				for i in tqdm(range(len(micro["circles"]))):
-					pass
+				for idx in tqdm(range(len(micro["circles"]))):
+					circle_hash = micro["circles"][idx]
+					interpolate_circle_color(circle, 
+						dataframe,
+						(X_col, Y_col),
+						grid_size)
 
 				break
 
