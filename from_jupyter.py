@@ -141,8 +141,8 @@ for l, micro in enumerate(microstructures):
         X, Y = dataframe[X_col].to_numpy(), dataframe[Y_col].to_numpy()
 
         # From micrometer- to pixel-scale
-        X = map_x(X)
-        Y = map_y(Y)
+        X = map_x(X).astype(int)
+        Y = map_y(Y).astype(int)
         
         for t in range(NUM_COL - 1, NUM_COL):
             # Create blank image to house SoL data from CSV files
@@ -166,10 +166,8 @@ for l, micro in enumerate(microstructures):
             # For normal use, just use SoL as is
             # t_init_df = col_map(avail_sol)
 
-            for k, x in enumerate(X):
-                x = int(x)
-                y = int(Y[k])
-                im[y, x, :] = t_init_df[k]
+            ## Optimization improvements
+            im[Y, X, :] = t_init_df
 
             time = dataframe.columns[t].split(" ")
             time = time[-1].split("=")[-1]
@@ -235,8 +233,8 @@ for l, micro in enumerate(microstructures):
                 sol_fill  = filled_in_values.iloc[:, 2].to_numpy()
 
                 # Convert from micrometer- to pixel-scale
-                x_fill = map_x(x_fill)
-                y_fill = map_y(y_fill)
+                x_fill = map_x(x_fill).astype(int)
+                y_fill = map_y(y_fill).astype(int)
 
                 # To see if the neural net will see different values
                 # we'll normalize the SoL and validate visually that
@@ -246,10 +244,7 @@ for l, micro in enumerate(microstructures):
                 # Change this later to use "sol_fill"
                 col_fill = col_map(sol_norm)
 
-                for j, x in enumerate(x_fill):
-                    x = int(x) if int(x) < L_pos * SCALE else L_pos * SCALE - 1
-                    y = int(y_fill[j])
-                    im[y, x, :] = col_fill[j]
+                im[y_fill, x_fill, :] = col_fill
 
             ## Show and save the image
             plt.imshow(im, origin='lower')
@@ -258,7 +253,7 @@ for l, micro in enumerate(microstructures):
             # Need to convert from float to int, as per: 
             #     https://stackoverflow.com/questions/55319949/pil-typeerror-cannot-handle-this-data-type
             im = Image.fromarray((im * 255).astype(np.uint8))
-            filename = os.path.join(os.getcwd(), 'from_jupyter.png')
+            filename = os.path.join(os.getcwd(), 'from_jupyter_1.png')
             im.save(filename)
 
         break
