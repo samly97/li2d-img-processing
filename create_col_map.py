@@ -109,19 +109,63 @@ def get_colored_vertices(df: pd.DataFrame,
 	
 	return (X, Y)
 
-# Gets the SoL for a particular:
-# - microstructures
-# - c_rate discharge experiment
-def get_SoL(df: pd.DataFrame) -> np.array:
-	# returns a table of State-of-Lithiation
-	# for all the timesteps in the discharge experiment
-	return df.iloc[:, 2:]
-
 # Get the timestep, t, from the column header
 def _get_timestep(df: pd.DataFrame, col: int) -> str:
 	time = df.columns[col].split(" ")
 	time = time[-1].split("=")[-1]
 	return time
+
+# create_colormap_image collates everything into one
+#
+# Current version uses normalized SoL so almost every image will
+# have a visible colormap.
+def create_colormap_image(df: pd.DataFrame,
+	colormap: nice_cm,
+	circles: list[dict[str]],
+	time_col: int,
+	xy_col: Tuple[pd.DataFrame, pd.DataFrame],
+	XY_vertices: Tuple[np.array, np.array],
+	h_cell: int,
+	L: int,
+	grid_size,
+	scale: int) -> np.array:
+	
+	# Create blank image to house SoL data from CSV files
+	im = np.zeros((h_cell * scale, L * scale, RGB_DIM))
+
+	# Header names of the (x, y) columns in Pandas DataFrame
+	X_col, Y_col = xy_col
+	# Coordinates already associated with colour (pixel-scale)
+	X, Y = XY_vertices 
+
+	# Get SoL associated with (X, Y)
+	avail_sol = df.iloc[:, time_col].to_numpy()
+
+	min_sol = np.min(avail_sol)
+	max_sol = np.max(avail_sol)
+
+	norm_sol = (avail_sol - min_sol)/(max_sol - min_sol)
+
+	# Setting precolored locations
+	im[Y, X, :] = colormap(norm_sol)
+
+	for idx in tqdm(range(len(circles))):
+		circle = circles[idx]
+
+		# Get interpolated coordinates and values
+		x_inter, y_inter, sol_inter = interpolate_circle_color(circle,
+			time_col,
+			df,
+			(X_col, Y_col),
+			grid_size,
+			scale)
+
+		# Fill in color
+		sol_inter_norm = (sol_inter - min_sol)/(max_sol - min_sol)
+		im[y_inter, x_inter, :] = colormap(sol_inter_norm)
+
+
+	return im
 
 # Interpolates the State-of-Lithiation, which is represented by the
 # color, using the available SoL values as per the COMSOL vertices.
@@ -304,49 +348,22 @@ if __name__ == "__main__":
 			# Get number of columns... 2 - NUM_COLUMN is num of time steps
 			_, NUM_COL = dataframe.shape
 
-			## Can get the State-of-Lithiation for the entire experiment
-			## here to avoid inefficiencies
-			SoL_dataframe = get_SoL(dataframe)
-
 			for t in tqdm(range(2, NUM_COL)):
 
 				# Get the timestep from the column header
 				time = _get_timestep(dataframe, t)
 
-				# Create blank image to house SoL data from CSV files
-				im = np.zeros((h_cell * scale, L * scale, RGB_DIM))
-
-				# SoL values from the vertices
-				# -2 Since the index starts from 0 now
-				avail_sol = SoL_dataframe.iloc[:, t - 2].to_numpy()
-
-				# Fill in the image with the available values just to SEE
-				# im[Y, X, :] = col_map(avail_sol)
-
-				##########################
-				## USING NORMALIZED SOL ##
-				##########################
-				sol_min = np.min(avail_sol)
-				sol_max = np.max(avail_sol)
-
-				sol_norm = (avail_sol - sol_min)/(sol_max - sol_min)
-				im[Y, X, :] = col_map(sol_norm)
-
-				# Go through list of circles in the microstructure
-				for idx in tqdm(range(len(micro["circles"]))):
-					circle_hash = micro["circles"][idx]
-					x_inter, y_inter, sol_inter = interpolate_circle_color(circle_hash, 
-						t,
-						dataframe,
-						(X_col, Y_col),
-						grid_size,
-						scale)
-
-					# im[y_inter, x_inter, :] = col_map(sol_inter)
-
-					### NORMALIZED SOL
-					sol_inter_norm = (sol_inter - sol_min)/(sol_max - sol_min)
-					im[y_inter, x_inter, :] = col_map(sol_inter_norm)
+				# Get colormap image
+				im = create_colormap_image(dataframe,
+					col_map,
+					micro["circles"],
+					t,
+					(X_col, Y_col),
+					(X, Y),
+					h_cell,
+					L,
+					grid_size,
+					scale)
 
 				output_dir = os.path.join(micro_path, "col/")
 				try:
