@@ -320,6 +320,15 @@ if __name__ == "__main__":
 				avail_sol = SoL_dataframe.iloc[:, t - 2].to_numpy()
 
 				# Fill in the image with the available values just to SEE
+				# im[Y, X, :] = col_map(avail_sol)
+
+				##########################
+				## USING NORMALIZED SOL ##
+				##########################
+				sol_min = np.min(avail_sol)
+				sol_max = np.max(avail_sol)
+
+				sol_norm = (avail_sol - sol_min)/(sol_max - sol_min)
 				im[Y, X, :] = col_map(avail_sol)
 
 				# Go through list of circles in the microstructure
@@ -332,7 +341,11 @@ if __name__ == "__main__":
 						grid_size,
 						scale)
 
-					im[y_inter, x_inter, :] = col_map(sol_inter)
+					# im[y_inter, x_inter, :] = col_map(sol_inter)
+
+					### NORMALIZED SOL
+					sol_inter_norm = (sol_inter - sol_min)/(sol_max - sol_min)
+					im[y_inter, x_inter, :] = col_map(sol_inter_norm)
 
 				output_dir = os.path.join(micro_path, "col/")
 				try:
