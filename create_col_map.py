@@ -41,7 +41,8 @@ def get_micro_directories() -> List[str]:
 	micro_dirs = os.listdir(os.getcwd())
 	# Parse out directories - i.e., no png/json/ipynb files
 	micro_dirs = [file for file in micro_dirs 
-					if not any(True for substr in ['.png', '.json', '.ipynb', '.DS_Store', '.git', '.gitignore'] 
+					if not any(True for substr in 
+					['.png', '.json', '.ipynb', '.DS_Store', '.git', '.gitignore', '.py'] 
 					if substr in file)]
 
 	micro_dirs.sort()
@@ -179,7 +180,7 @@ def _drop_nan_from_interpolate(xy_col: Tuple[pd.DataFrame, pd.DataFrame],
 		"temp": SoL_interpolated,
 		})
 
-	to_drop_df.dropna()
+	to_drop_df = to_drop_df.dropna()
 
 	x_filt = to_drop_df[X_col].to_numpy()
 	y_filt = to_drop_df[Y_col].to_numpy()
@@ -307,7 +308,7 @@ if __name__ == "__main__":
 			## here to avoid inefficiencies
 			SoL_dataframe = get_SoL(dataframe)
 
-			for t in tqdm(range(2, NUM_COL)):
+			for t in tqdm(range(NUM_COL - 1, NUM_COL)):
 
 				# Get the timestep from the column header
 				time = _get_timestep(dataframe, t)
@@ -329,7 +330,7 @@ if __name__ == "__main__":
 				sol_max = np.max(avail_sol)
 
 				sol_norm = (avail_sol - sol_min)/(sol_max - sol_min)
-				im[Y, X, :] = col_map(avail_sol)
+				im[Y, X, :] = col_map(sol_norm)
 
 				# Go through list of circles in the microstructure
 				for idx in tqdm(range(len(micro["circles"]))):
@@ -353,7 +354,11 @@ if __name__ == "__main__":
 				except FileExistsError:
 					pass
 
-				filename = "c%s_t%s.png" % (c_rate_exp, time)
-				filename = os.path.join(output_dir, filename)
-				save_colmap_png(im, filename)
+				# filename = "c%s_t%s.png" % (c_rate_exp, time)
+				# filename = os.path.join(output_dir, filename)
+				# save_colmap_png(im, filename)
+
+				save_colmap_png(im, "revised.png")
+			break
+		break
 
