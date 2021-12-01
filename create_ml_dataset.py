@@ -49,5 +49,86 @@
 
 """
 
+## Thoughts on Pending Modifications/Additions
+"""
+1. Activation
+
+Depends on:
+- Zoom ratio
+
+Can implement this when iterating through each microstructure. For each
+microstructure, we can create however many 'just white' circles with whatever
+background color we want.
+
+Though when using the Machine Learning model, there needs to be a way to get 
+the activation back:
+- There needs to be a mapping between the IMAGE_NUMBER (e.g. 5000) and its 
+  activation (e.g. from microstructure 1 circle 55)
+
+2. Local Porosity
+
+Do not necessarily need to use PoreSpy. Can just find out the fraction of the 
+phases using NumPy and then divide ratios.
+
+Can be incorporated relatively easily within existing implementation.
+
+3. Zoom Ratio
+
+
+With smaller particles, we'll end up seeing more of the electrode domain, but when 
+(R/Box_size) is close to 100%, the image will be mostly particle, and doesn't show
+the diffusive/migrative path.
+
+How will this be defined? Will it be relative to the:
+	(Maximum Radius)/Bounding box size
+?
+
+One implementation could be to define a default bounding size, AND THEN zoom 
+to get a targetted percentage-% of how much pore space we see.
+
+Jeff:
+- Something like particle diameter x 2
+- Something that's consistent
+- But images at the end have to be the same size
+
+"""
+
+import os
+from typing import Tuple, List
+
+from tqdm import tqdm
+
+import json
+
+from PIL import Image
+from skimage import io
+from skimage.transform import resize
+
+# Just for testing how images look
+import matplotlib.pyplot as plt
+
 if __name__ == "__main__":
-	pass
+	
+	# Variable to store image
+
+	# For each microstructure, e.g. micros [1, 2, 3, 4, 5]
+	for i in range(1, 6):
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
