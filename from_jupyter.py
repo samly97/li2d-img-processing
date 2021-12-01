@@ -7,7 +7,15 @@
 #
 # Afterwards, let's try to get our 'create_col_map.py' working
 
+## Comparison between:
+## - Microstructure 1
+## - C-rate = 0.33
+## - T = 9900 seconds
+
 import numpy as np
+
+# Show progress of stuff
+from tqdm import tqdm
 
 import matplotlib.pyplot as plt
 from matplotlib import cm
@@ -63,7 +71,9 @@ HEADER_ROW = 8
 MICRO_DIRS = os.listdir(os.getcwd())
 # Parses out only directories - i.e., not png/json/ipynb files
 MICRO_DIRS = [file for file in MICRO_DIRS 
-              if not any(True for substr in ['.png', '.json', '.ipynb', '.DS_Store'] if substr in file)]
+              if not any(True for substr in 
+                ['.png', '.json', '.ipynb', '.DS_Store', '.git', '.gitignore'] 
+                if substr in file)]
 MICRO_DIRS.sort()
 MICRO_DIRS = [os.path.join(os.getcwd(), dirr) for dirr in MICRO_DIRS]
 
@@ -134,7 +144,7 @@ for l, micro in enumerate(microstructures):
         X = map_x(X)
         Y = map_y(Y)
         
-        for t in range(2, NUM_COL):
+        for t in range(NUM_COL - 1, NUM_COL):
             # Create blank image to house SoL data from CSV files
             im = np.zeros((h_cell * SCALE, L_pos * SCALE, RGB_dim))
 
@@ -168,8 +178,7 @@ for l, micro in enumerate(microstructures):
             print("Time=", time, "s")
 
             ## Using the normalized State-of-Lithiation
-            for i in range(len(micro['circles'])):
-                print(i)
+            for i in tqdm(range(len(micro['circles']))):
                 curr_circ = micro['circles'][i]
 
                 # Define co-ordinates to box in a circle
@@ -244,15 +253,13 @@ for l, micro in enumerate(microstructures):
 
             ## Show and save the image
             plt.imshow(im, origin='lower')
+            plt.show()
 
             # Need to convert from float to int, as per: 
             #     https://stackoverflow.com/questions/55319949/pil-typeerror-cannot-handle-this-data-type
             im = Image.fromarray((im * 255).astype(np.uint8))
-            out_path = os.path.join(micro_path, "col/")
-            try:
-                os.mkdir(out_path)
-            except FileExistsError:
-                pass
-            filename = "c%s_t%s.png" % (c_rate, time)
-            filename = os.path.join(out_path, filename)
+            filename = os.path.join(os.getcwd(), 'from_jupyter.png')
             im.save(filename)
+
+        break
+    break
