@@ -285,6 +285,9 @@ def generate_ml_dataset(
                     str(pic_num) + ".png")
                 save_micro_png(label_im, label_fname)
 
+                # Measure local porosity
+                porosity = measure_porosity(input_im)
+
                 # Write metadata to JSON
                 dataset_json[pic_num] = {
                     "micro": idx - 1,
@@ -294,6 +297,7 @@ def generate_ml_dataset(
                     "c-rate": c_rate,
                     "time": time,
                     "dist_from_sep": float(x)/L,
+                    "porosity": porosity,
                 }
 
                 # Update picture number
@@ -354,6 +358,37 @@ def extract_input_and_cmap_im(box_radius: int,
     ]
 
     return input_im, label_im
+
+
+def measure_porosity(
+        micro_im: np.array
+) -> float:
+    r''' measure_porosity measures the porosity of the extracted images used in
+        the machine learning model. These images are different from the
+        microstructural image, so this measures the LOCAL (extracted) and not
+        the GLOBAL (microstructure) porosity.
+
+        Inputs:
+        - micro_im: np.array; extracted image with particle centered
+
+        Returns:
+        - porosity: float
+    '''
+
+    _black = np.array([0, 0, 0])
+
+    Y, X, _ = micro_im.shape
+
+    padding = np.all(micro_im == _black, axis=-1)
+    padding = np.sum(padding)
+
+    pore_space = np.all(micro_im == GREEN, axis=-1)
+    pore_space = np.sum(pore_space)
+
+    electrode_domain = float(Y * X - padding)
+    porosity = pore_space / electrode_domain
+
+    return porosity
 
 
 def _get_color_circle(
