@@ -1,10 +1,25 @@
-#####################################
-## CREATE MACHINE LEARNING DATASET ##
-#####################################
+import os
+from typing import Tuple, List
+from tqdm import tqdm
+import json
+import numpy as np
+from math import ceil
+from PIL import Image
+from skimage import io
+# from skimage.transform import resize
+import matplotlib.pyplot as plt
+
+####################################
+# CREATE MACHINE LEARNING DATASET ##
+####################################
 
 # TODO:
 # - ACTIVATIONS: seperate geometry from concentration prediction
 # - LOCAL porosity
+# - There are some "bleeding" edge effects from the colors not interpolating
+#   the colors completely. Will need to decide what to do. Could decide to
+#   interpolate the edges or we could use the difference between the circles
+#   and the generated color and just fill it in with the background.
 # - incorporate BOUNDING_BOX parameterization
 # - zoom ratios
 
@@ -25,7 +40,7 @@
     particle geometry.
 
 1c. Load the microstructure data:
-	- List of circles 
+	- List of circles
 	- Porosity value (global)
 	- Tortuosity value (global)
 
@@ -39,7 +54,7 @@
 
 3. Loop through all particles in the microstructural data
 
-3a. Extract the (input, target) image 
+3a. Extract the (input, target) image
 
 3b. Save the input and output images
 
@@ -60,14 +75,14 @@ Can implement this when iterating through each microstructure. For each
 microstructure, we can create however many 'just white' circles with whatever
 background color we want.
 
-Though when using the Machine Learning model, there needs to be a way to get 
+Though when using the Machine Learning model, there needs to be a way to get
 the activation back:
-- There needs to be a mapping between the IMAGE_NUMBER (e.g. 5000) and its 
+- There needs to be a mapping between the IMAGE_NUMBER (e.g. 5000) and its
   activation (e.g. from microstructure 1 circle 55)
 
 2. Local Porosity
 
-Do not necessarily need to use PoreSpy. Can just find out the fraction of the 
+Do not necessarily need to use PoreSpy. Can just find out the fraction of the
 phases using NumPy and then divide ratios.
 
 Can be incorporated relatively easily within existing implementation.
@@ -75,7 +90,7 @@ Can be incorporated relatively easily within existing implementation.
 3. Zoom Ratio
 
 
-With smaller particles, we'll end up seeing more of the electrode domain, but when 
+With smaller particles, we'll end up seeing more of the electrode domain, but when
 (R/Box_size) is close to 100%, the image will be mostly particle, and doesn't show
 the diffusive/migrative path.
 
@@ -83,7 +98,7 @@ How will this be defined? Will it be relative to the:
 	(Maximum Radius)/Bounding box size
 ?
 
-One implementation could be to define a default bounding size, AND THEN zoom 
+One implementation could be to define a default bounding size, AND THEN zoom
 to get a targetted percentage-% of how much pore space we see.
 
 Jeff:
@@ -93,23 +108,6 @@ Jeff:
 
 """
 
-
-# Trying something out
-
-# Just for testing how images look
-
-
-# Pore and solid-phase colours
-# from skimage.transform import resize
-import os
-from typing import Tuple, List
-from tqdm import tqdm
-import json
-import numpy as np
-from math import ceil
-from PIL import Image
-from skimage import io
-import matplotlib.pyplot as plt
 GREEN = np.array([0, 128, 0])
 TEAL = np.array([0, 128, 128])
 
@@ -223,6 +221,91 @@ def get_micro_colmaps(microstructure: int) -> List[str]:
     return colmaps
 
 
+def generate_ml_dataset(
+        cell_params: Tuple[int, int],
+        settings: Tuple[int, int],
+        directories: Tuple[str, str, str],
+        microstructures,
+):
+    r'''
+    generate_ml_dataset is the top-level function extract the input and target
+    images used for training the Machine Learning model. The JSON metadata will
+    be generated here as well.
+    '''
+
+    L, h_cell = cell_params
+    scale, box_radius = settings
+    dataset_dir, input_dir, label_dir = directories
+
+    meshgrid = get_electrode_meshgrid(L, h_cell, scale)
+
+    # Dictionary to write output to
+    dataset_json = {}
+
+    # Variable to store current image
+    pic_num = 1
+
+    # For each microstructure, e.g. micros [1, 2, 3, 4, 5]
+    for idx in tqdm(range(1, len(microstructures) + 1)):
+        micro_im = io.imread("micro_" + str(idx) + ".png")
+
+        # Get all colormaps associated with microstructure "i"
+        cm_filenames = get_micro_colmaps(idx)
+
+        circles = micro_data[idx - 1]["circles"]
+
+        for colormap in tqdm(cm_filenames):
+            cm_image = io.imread(colormap)
+
+            # Get the experimental params from filename
+            c_rate, time = get_exp_params(colormap)
+
+            for particle in circles:
+                x = particle['x']
+                y = particle['y']
+                R = particle['R']
+
+                input_im, label_im = extract_input_and_cmap_im(
+                    box_radius,
+                    micro_im,
+                    cm_image,
+                    (x, y, R),
+                    meshgrid,
+                    scale)
+
+                # Save input image
+                input_fname = os.path.join(
+                    input_dir,
+                    str(pic_num) + ".png")
+                save_micro_png(input_im, input_fname)
+
+                # Save label image
+                label_fname = os.path.join(
+                    label_dir,
+                    str(pic_num) + ".png")
+                save_micro_png(label_im, label_fname)
+
+                # Write metadata to JSON
+                dataset_json[pic_num] = {
+                    "micro": idx - 1,
+                    "x": x,
+                    "y": y,
+                    "R": R,
+                    "c-rate": c_rate,
+                    "time": time,
+                    "dist_from_sep": float(x)/L,
+                }
+
+                # Update picture number
+                pic_num += 1
+
+    # Save JSON data
+    dataset_json_fname = os.path.join(dataset_dir, "dataset.json")
+
+    with open(dataset_json_fname, 'w') as outfile:
+        json.dump(dataset_json, outfile, indent=4)
+
+
 def extract_input_and_cmap_im(box_radius: int,
                               micro_im: np.array,
                               colmap_im: np.array,
@@ -252,10 +335,10 @@ def extract_input_and_cmap_im(box_radius: int,
 
     # New coordinates for (x, y) after padding
     x_new, y_new = _padded_coords(
-        padded_with_color,
         x,
         y,
-        box_radius)
+        box_radius,
+        scale)
 
     # Extract the "blank" microstructure image and image with particle with
     # color
@@ -428,8 +511,13 @@ if __name__ == "__main__":
     # Load metadata generated from COMSOL
     micro_data = read_metadata("metadata.json")
 
-    # Just a blank meshgrid with dimensions of the electrode
-    meshgrid = get_electrode_meshgrid(L, h_cell, scale)
+    # Generate Machine Learning data
+    generate_ml_dataset(
+        (L, h_cell),
+        (scale, box_radius),
+        (dataset_dir, input_dir, label_dir),
+        micro_data,
+    )
 
     # Create the "activation" pictures
     # create_activations("activations.json",
@@ -439,69 +527,3 @@ if __name__ == "__main__":
     # 	box_radius,
     # 	start_idx = 1,
     # 	end_idx = 5)
-
-    # Dictionary to write output to
-    dataset_json = {}
-
-    # Variable to store current image
-    pic_num = 1
-
-    # For each microstructure, e.g. micros [1, 2, 3, 4, 5]
-    for idx in tqdm(range(1, 6)):
-        micro_im = io.imread("micro_" + str(idx) + ".png")
-
-        # Get all colormaps associated with microstructure "i"
-        cm_filenames = get_micro_colmaps(idx)
-
-        circles = micro_data[idx - 1]["circles"]
-
-        for colormap in tqdm(cm_filenames):
-            cm_image = io.imread(colormap)
-
-            # Get the experimental params from filename
-            c_rate, time = get_exp_params(colormap)
-
-            for particle in circles:
-                x = particle['x']
-                y = particle['y']
-                R = particle['R']
-
-                input_im, label_im = extract_input_and_cmap_im(
-                    box_radius,
-                    micro_im,
-                    cm_image,
-                    (x, y, R),
-                    meshgrid,
-                    scale)
-
-                # Save input image
-                input_fname = os.path.join(
-                    input_dir,
-                    str(pic_num) + ".png")
-                save_micro_png(input_im, input_fname)
-
-                # Save label image
-                label_fname = os.path.join(
-                    label_dir,
-                    str(pic_num) + ".png")
-                save_micro_png(label_im, label_fname)
-
-                # Write metadata to JSON
-                dataset_json[pic_num] = {
-                    "micro": idx - 1,
-                    "x": x,
-                    "y": y,
-                    "R": R,
-                    "c-rate": c_rate,
-                    "time": time,
-                    "dist_from_sep": float(x)/L,
-                }
-
-                # Update picture number
-                pic_num += 1
-
-    # Save JSON data
-    dataset_json_fname = os.path.join(dataset_dir, "dataset.json")
-
-    with open(dataset_json_fname, 'w') as outfile:
-        json.dump(dataset_json, outfile, indent=4)
