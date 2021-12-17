@@ -14,8 +14,8 @@ import matplotlib.pyplot as plt
 ####################################
 
 # TODO:
-# - ACTIVATIONS: seperate geometry from concentration prediction
-# - LOCAL porosity
+# - ACTIVATIONS: seperate geometry from concentration prediction ✅
+# - LOCAL porosity ✅
 # - There are some "bleeding" edge effects from the colors not interpolating
 #   the colors completely. Will need to decide what to do. Could decide to
 #   interpolate the edges or we could use the difference between the circles
@@ -437,54 +437,90 @@ def _add_color_to_background(micro_im: np.array,
     return ret_im
 
 
-def create_activations(fname: str,
-                       micro_data,
-                       dataset_dir: str,
-                       activation_dir: str,
-                       box_radius: int,
-                       start_idx: int,
-                       end_idx: int):
+def create_activations(
+    fname: str,
+        cell_params: Tuple[int, int],
+        micro_data,
+        dataset_dir: str,
+        activation_dir: str,
+        box_radius: int,
+        start_idx: int,
+        end_idx: int,
+        scale=10):
     r''' create_activations ...
 
     TODO:
     -	incorporate zoom/aspect ratio
     '''
 
-    outfile = {}
+    _white = np.array([255, 255, 255])
+
+    L, h_cell = cell_params
+
+    activation_json = {}
+
+    # Meshgrid of cell geometry
+    xx, yy = get_electrode_meshgrid(L, h_cell, scale)
+
+    # Blank image
+    micro_im = np.zeros((h_cell * scale, L * scale, 3), dtype=int)
 
     # Activation picture number
     act_num = 1
 
-    for micro in range(start_idx, end_idx + 1):
-        circles = micro_data[micro - 1]["circles"]
+    for micro_idx in tqdm(range(start_idx, end_idx + 1)):
+        circles = micro_data[micro_idx - 1]["circles"]
 
-        # Read the microstructure image
-        micro_im = io.imread("micro_" + str(micro) + ".png")
-
-        print(micro_im.shape)
-
-        padded_im = _pad_image(micro_im, box_radius)
-
-        for circle in circles:
+        for circle in tqdm(circles):
             x = circle["x"]
             y = circle["y"]
             R = circle["R"]
 
-            x_new, y_new = _padded_coords(padded_im,
-                                          x, y, box_radius)
+            x = float(x)
+            y = float(y)
+            R = float(R)
 
-            plt.imshow(act_im)
-            plt.show()
+            in_circ = np.sqrt((yy - y) ** 2 + (xx - x) ** 2) <= R
 
-            break
+            new_im = np.copy(micro_im)
+            new_im[in_circ] = _white
+
+            padded_im = _pad_image(
+                new_im,
+                box_radius)
+
+            x_new, y_new = _padded_coords(
+                x,
+                y,
+                box_radius,
+                scale)
+
+            act_im = padded_im[
+                y_new - box_radius: y_new + box_radius + 1,
+                x_new - box_radius: x_new + box_radius + 1,
+                :
+            ]
+
+            act_im_fname = os.path.join(
+                activation_dir,
+                str(act_num) + ".png")
+            save_micro_png(act_im, act_im_fname)
 
             # Save metadata to JSON dict
-            outfile[act_num] = {
-                "micro": micro,
+            activation_json[act_num] = {
+                "micro": micro_idx,
                 "x": x,
                 "y": y,
             }
-        break
+
+            # Incremement activation num
+            act_num += 1
+
+        # Save JSON data
+    act_im_json = os.path.join(dataset_dir, fname)
+
+    with open(act_im_json, 'w') as outfile:
+        json.dump(activation_json, outfile, indent=4)
 
 
 def _pad_image(orig_im: np.array,
@@ -546,6 +582,18 @@ if __name__ == "__main__":
     # Load metadata generated from COMSOL
     micro_data = read_metadata("metadata.json")
 
+    # Create the "activation" pictures
+    create_activations(
+        "activations.json",
+        (L, h_cell),
+        micro_data,
+        dataset_dir,
+        activation_dir,
+        box_radius,
+        start_idx=1,
+        end_idx=5,
+        scale=scale)
+
     # Generate Machine Learning data
     generate_ml_dataset(
         (L, h_cell),
@@ -553,12 +601,3 @@ if __name__ == "__main__":
         (dataset_dir, input_dir, label_dir),
         micro_data,
     )
-
-    # Create the "activation" pictures
-    # create_activations("activations.json",
-    # 	micro_data,
-    # 	dataset_dir,
-    # 	activation_dir,
-    # 	box_radius,
-    # 	start_idx = 1,
-    # 	end_idx = 5)
