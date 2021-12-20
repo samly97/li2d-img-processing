@@ -496,8 +496,8 @@ def create_activations(
                 scale)
 
             act_im = padded_im[
-                y_new - box_radius: y_new + box_radius + 1,
-                x_new - box_radius: x_new + box_radius + 1,
+                y_new - box_radius: y_new + box_radius - 1,
+                x_new - box_radius: x_new + box_radius - 1,
                 :
             ]
 
