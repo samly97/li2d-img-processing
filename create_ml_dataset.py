@@ -290,7 +290,7 @@ def generate_ml_dataset(
 
                 # Write metadata to JSON
                 dataset_json[pic_num] = {
-                    "micro": idx - 1,
+                    "micro": idx,
                     "x": x,
                     "y": y,
                     "R": R,
