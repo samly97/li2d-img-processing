@@ -141,6 +141,7 @@ def get_ml_dataset(
     act_mapping: Dict[str, str],
     dataset_json,
     im_size: int,
+    batch_size: int,
     norm_metadata: Tuple[int, int, int, int, int],
     dirs: Tuple[str, str, str, str],
     start_idx: int,
@@ -196,7 +197,17 @@ def get_ml_dataset(
 
         return input_im, act_im, metadata, label_im
 
+    def configure_for_performance(ds):
+        # from https://www.tensorflow.org/tutorials/load_data/images#using_tfdata_for_finer_control
+        ds = ds.cache()
+        ds = ds.shuffle(buffer_size=1000)
+        ds = ds.batch(batch_size)
+        ds = ds.prefetch(buffer_size=AUTOTUNE)
+        return ds
+
     ret_ds = ret_ds.map(process_path, num_parallel_calls=AUTOTUNE)
+    ret_ds = configure_for_performance(ret_ds)
+
     return ret_ds
 
 
@@ -332,6 +343,7 @@ if __name__ == "__main__":
         activation_fnames,
         dataset_json,
         settings["im_size"],
+        settings["batch_size"],
         norm_metadata,
         (settings["data_dir"],
          settings["input_dir"],
