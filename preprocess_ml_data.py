@@ -1,49 +1,11 @@
 import os
 from typing import Dict, List, Tuple
-from skimage import io
 from matplotlib import pyplot as plt
 from math import ceil
 import numpy as np
 from random import shuffle
 import tensorflow as tf
-from tensorflow import keras
 import json
-
-'''
-Current working state of Jupyter Notebook:
-
-1. Join the generated dataset directories and read all files
-
-2. Define a train/validation/test data split, create "split" indices, then
-   shuffle the "deck" of total data and partition the picture filenames
-   according to this random order.
-
-3. Open the "activations.json" file and create a look-up table to find the
-   "activation" of an extracted image based on which microstructure it belongs
-    to and the corresponding (x, y) coordinate.
-
-4. Open the "dataset.json" file and return the "activation" filename
-   corresponding to the "extracted" image filenames found in the training (or
-   validation or testing) datasets.
-
-   In other words, create the training (or val/test) set of activations.
-
-5. Shuffle the "input" and "label" images according to the random order.
-
-6. Save the dataset files in another directory which categories files belonging
-   to the train/validation/test set.
-
-7. Use the built-in image_dataset_from_directory utility function to load the
-   "inputs" and "labels" separately.
-
-8. Unpack the tf.data.Dataset types into Numpy arrays.
-
-9. Open the "dataset.json" file and parse the metadata into train/val/test sets
-
-10. Define a helper function which returns predictions and the associated
-    Root-Mean-Square-Error.
-
-'''
 
 
 def read_user_settings() -> dict:
@@ -203,24 +165,23 @@ def get_ml_dataset(
         default_value="",
     )
 
-    # relevant_nums = pic_num[start_idx: end_idx]
-    # m_keys = [None for _ in range(0, len(relevant_nums))]
-    # m_vals = [None for _ in range(0, len(relevant_nums))]
+    relevant_nums = pic_num[start_idx: end_idx]
+    m_keys = [None for _ in range(0, len(relevant_nums))]
+    m_vals = [None for _ in range(0, len(relevant_nums))]
 
-    # for i, num in enumerate(relevant_nums):
-    #     m_keys[i] = num
-    #     m_vals[i] = format_metadata(
-    #         num,
-    #         dataset_json,
-    #         norm_metadata
-    #     )
-    # m_keys = tf.constant(m_keys)
-    # m_vals = tf.constant(m_vals)
+    for i, num in enumerate(relevant_nums):
+        m_keys[i] = tf.constant(num)
+        m_vals[i] = format_metadata(
+            num,
+            dataset_json,
+            norm_metadata)
 
-    # meta_table = tf.lookup.StaticHashTable(
-    #     tf.lookup.KeyValueTensorInitializer(m_keys, m_vals),
-    #     default_value=[0, 0, 0, 0, 0, 0, 0],
-    # )
+    m_vals = tf.constant(m_vals)
+
+    new_data = tf.lookup.StaticHashTable(
+        tf.lookup.KeyValueTensorInitializer(m_keys, m_vals),
+        default_value="",
+    )
 
     ret_ds = tf.data.Dataset.from_tensor_slices(pic_num[start_idx: end_idx])
 
@@ -240,10 +201,10 @@ def get_ml_dataset(
             act_dir,
             im_size,
         )
-        # metadata = _format_metadata(
-        #     pic_num,
-        #     meta_table,
-        # )
+        metadata = _format_metadata(
+            pic_num,
+            new_data,
+        )
         label_im = _load_image(
             pic_num,
             data_dir,
@@ -251,8 +212,7 @@ def get_ml_dataset(
             im_size,
         )
 
-        # return input_im, act_im, metadata, label_im
-        return input_im, act_im, label_im
+        return input_im, act_im, metadata, label_im
 
     ret_ds = ret_ds.map(process_path, num_parallel_calls=AUTOTUNE)
     return ret_ds
@@ -261,11 +221,17 @@ def get_ml_dataset(
 def format_metadata(
         pic_num: str,
         dataset_json,
-        norm_metadata: Tuple[int, int, int, int, int]):
-
-    hash = dataset_json[pic_num]
+        norm_metadata: Tuple[int, int, int, int, int]) -> List[str]:
+    r''' format_metadata is the step prior to processing data into a
+    tf.data.Dataset used for the Machine Learning pipeline. Due to TensorFlow
+    not behaving well with Dictionaries or Lists in their built-in lookup
+    tables, this step returns the metadata as strings. In the pipeline step,
+    the strings are split and parsed into floats.
+    '''
 
     L, h_cell, R_max, c_rate_norm, time_norm = norm_metadata
+
+    hash = dataset_json[pic_num]
 
     x = float(hash["x"]) / L
     y = float(hash["y"]) / h_cell
@@ -275,7 +241,10 @@ def format_metadata(
     porosity = float(hash["porosity"])
     dist_from_sep = float(hash["dist_from_sep"])
 
-    ret = [x, y, R, c_rate, time, porosity, dist_from_sep]
+    as_float = [x, y, R, c_rate, time, porosity, dist_from_sep]
+
+    s = "-"
+    ret = s.join([str(num) for num in as_float])
     return ret
 
 
@@ -304,9 +273,12 @@ def _get_act_num(
 
 def _format_metadata(
     pic_num: tf.Tensor,
-    metadata_tensor,
+    metadata_tensor: tf.lookup.StaticHashTable,
 ):
-    return metadata_tensor[pic_num]
+    as_str = metadata_tensor[pic_num]
+    str_nums = tf.strings.split(as_str, sep="-")
+    ret = tf.strings.to_number(str_nums, out_type=tf.dtypes.float32)
+    return ret
 
 
 if __name__ == "__main__":
@@ -361,14 +333,14 @@ if __name__ == "__main__":
         end_idx=trn_idx[1],
     )
 
-    for input, act, target in trn_dataset.take(1):
+    for input, act, meta, target in trn_dataset.take(1):
         plt.imshow(input/255)
         plt.show()
 
         plt.imshow(act)
         plt.show()
 
-        # print(meta)
+        print(meta)
 
         plt.imshow(target/255)
         plt.show()
