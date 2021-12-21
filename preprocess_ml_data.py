@@ -150,36 +150,18 @@ def get_ml_dataset(
 
     data_dir, input_dir, act_dir, label_dir = dirs
 
-    keys = [None for _ in range(0, len(act_mapping))]
-    vals = [None for _ in range(0, len(act_mapping))]
+    act_table = _get_static_hash_table(
+        act_mapping,
+        val_fn=lambda num: act_mapping[num],
+        default_value="")
 
-    for i, key in enumerate(act_mapping.keys()):
-        keys[i] = key
-        vals[i] = act_mapping[key]
-
-    keys = tf.constant(keys)
-    vals = tf.constant(vals)
-
-    act_table = tf.lookup.StaticHashTable(
-        tf.lookup.KeyValueTensorInitializer(keys, vals),
-        default_value="",
-    )
-
-    relevant_nums = pic_num[start_idx: end_idx]
-    m_keys = [None for _ in range(0, len(relevant_nums))]
-    m_vals = [None for _ in range(0, len(relevant_nums))]
-
-    for i, num in enumerate(relevant_nums):
-        m_keys[i] = tf.constant(num)
-        m_vals[i] = format_metadata(
+    new_data = _get_static_hash_table(
+        dataset_json,
+        val_fn=lambda num: format_metadata(
             num,
             dataset_json,
-            norm_metadata)
-
-    m_vals = tf.constant(m_vals)
-
-    new_data = tf.lookup.StaticHashTable(
-        tf.lookup.KeyValueTensorInitializer(m_keys, m_vals),
+            norm_metadata,
+        ),
         default_value="",
     )
 
@@ -216,6 +198,32 @@ def get_ml_dataset(
 
     ret_ds = ret_ds.map(process_path, num_parallel_calls=AUTOTUNE)
     return ret_ds
+
+
+def _get_static_hash_table(
+        hash: dict,
+        val_fn=lambda v: v,
+        default_value="") -> tf.lookup.StaticHashTable:
+    r''' The default value depends on what the data type of the key is.
+    '''
+
+    keys = [None for _ in range(0, len(hash))]
+    vals = [None for _ in range(0, len(hash))]
+
+    for i, key in enumerate(hash.keys()):
+        val = val_fn(key)
+
+        keys[i] = str(key)
+        vals[i] = val
+
+    keys = tf.constant(keys)
+    vals = tf.constant(vals)
+
+    ret_table = tf.lookup.StaticHashTable(
+        tf.lookup.KeyValueTensorInitializer(keys, vals),
+        default_value=default_value)
+
+    return ret_table
 
 
 def format_metadata(
