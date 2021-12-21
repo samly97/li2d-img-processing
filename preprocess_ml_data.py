@@ -1,6 +1,5 @@
 import os
 from typing import Dict, List, Tuple
-from matplotlib import pyplot as plt
 from math import ceil
 import numpy as np
 from random import shuffle
@@ -300,7 +299,13 @@ def _format_metadata(
     return ret
 
 
-if __name__ == "__main__":
+def preprocess_ml_data() -> Tuple[
+        tf.data.Dataset,
+        tf.data.Dataset,
+        tf.data.Dataset]:
+    r''' Define alternate entry point to when the script is not being called
+    explicitly, i.e., cases other than "__name__ == __main__".
+    '''
     settings = read_user_settings()
 
     norm_metadata = (
@@ -353,14 +358,48 @@ if __name__ == "__main__":
         end_idx=trn_idx[1],
     )
 
-    for input, act, meta, target in trn_dataset.take(1):
-        plt.imshow(input/255)
-        plt.show()
+    val_dataset = get_ml_dataset(
+        pic_num,
+        activation_fnames,
+        dataset_json,
+        settings["im_size"],
+        settings["batch_size"],
+        norm_metadata,
+        (settings["data_dir"],
+         settings["input_dir"],
+         settings["activation_dir"],
+         settings["label_dir"]),
+        start_idx=val_idx[0],
+        end_idx=val_idx[1],
+    )
 
-        plt.imshow(act)
-        plt.show()
+    test_dataset = get_ml_dataset(
+        pic_num,
+        activation_fnames,
+        dataset_json,
+        settings["im_size"],
+        settings["batch_size"],
+        norm_metadata,
+        (settings["data_dir"],
+         settings["input_dir"],
+         settings["activation_dir"],
+         settings["label_dir"]),
+        start_idx=test_idx[0],
+        end_idx=test_idx[1],
+    )
 
-        print(meta)
+    return (
+        trn_dataset,
+        val_dataset,
+        test_dataset,
+    )
 
-        plt.imshow(target/255)
-        plt.show()
+
+if __name__ == "__main__":
+    """
+    Copy-paste form preprocess_ml_data if desired to test this script:
+
+    Run in terminal and diagnose:
+    - python preprocess_ml_data.py
+    """
+    pass
