@@ -509,8 +509,8 @@ def create_activations(
             # Save metadata to JSON dict
             activation_json[act_num] = {
                 "micro": micro_idx,
-                "x": x,
-                "y": y,
+                "x": str(x),
+                "y": str(y),
             }
 
             # Incremement activation num
