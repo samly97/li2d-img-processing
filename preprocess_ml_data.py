@@ -165,9 +165,9 @@ def get_ml_dataset(
         default_value="",
     )
 
-    ret_ds = tf.data.Dataset.from_tensor_slices(pic_num[start_idx: end_idx])
+    fname_ds = tf.data.Dataset.from_tensor_slices(pic_num[start_idx: end_idx])
 
-    def process_path(pic_num):
+    def process_path_inputs(pic_num):
         input_im = _load_image(
             pic_num,
             data_dir,
@@ -187,6 +187,10 @@ def get_ml_dataset(
             pic_num,
             new_data,
         )
+
+        return input_im, act_im, metadata
+
+    def process_path_targets(pic_num):
         label_im = _load_image(
             pic_num,
             data_dir,
@@ -194,19 +198,22 @@ def get_ml_dataset(
             im_size,
         )
 
-        return input_im, act_im, metadata, label_im
+        return label_im
 
     def configure_for_performance(ds):
         # from https://www.tensorflow.org/tutorials/load_data/images#using_tfdata_for_finer_control
         ds = ds.cache()
-        ds = ds.shuffle(buffer_size=1000)
         ds = ds.batch(batch_size)
         ds = ds.prefetch(buffer_size=AUTOTUNE)
         return ds
 
-    ret_ds = ret_ds.map(process_path, num_parallel_calls=AUTOTUNE)
-    ret_ds = configure_for_performance(ret_ds)
+    inp_ds = fname_ds.map(process_path_inputs, num_parallel_calls=AUTOTUNE)
+    out_ds = fname_ds.map(process_path_targets, num_parallel_calls=AUTOTUNE)
 
+    inp_ds = configure_for_performance(inp_ds)
+    out_ds = configure_for_performance(out_ds)
+
+    ret_ds = tf.data.Dataset.zip((inp_ds, out_ds))
     return ret_ds
 
 
