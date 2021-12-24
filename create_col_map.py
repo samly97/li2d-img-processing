@@ -346,13 +346,13 @@ if __name__ == "__main__":
     # COLOR MAP
     col_map = nice_cm(settings["colormap"])
 
-    for l, micro in tqdm(enumerate(microstructures)):
+    for idx, micro in tqdm(enumerate(microstructures)):
         # Get the path to the microstructure for file read/write
-        micro_path = micro_dirs[l]
+        micro_path = micro_dirs[idx]
 
         for c_rate_exp in c_rates:
             # Helpful print statement to indicate progress
-            print(("Microstructure: %d C-rate: %s") % (l + 1, c_rate_exp))
+            print(("Microstructure: %d C-rate: %s") % (idx + 1, c_rate_exp))
 
             dataframe = read_csv_into_pandas(
                 micro_path,
