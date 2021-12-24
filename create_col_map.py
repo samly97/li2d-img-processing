@@ -1,7 +1,6 @@
 import os
 from typing import List, Tuple
 
-# Show progress of stuff
 from tqdm import tqdm
 
 import json
@@ -19,11 +18,10 @@ GREEN = np.array([0, 128, 0])
 
 MESHGRID = Tuple[np.array, np.array]
 
-# Wrapper to avoid having to index everytime to discard the
-# transparence value when calling the colormap
-
 
 class nice_cm:
+    # Wrapper to avoid having to index everytime to discard the
+    # transparence value when calling the colormap
 
     def __init__(self, color: str):
         self.cm = cm.get_cmap(color)
@@ -36,48 +34,48 @@ def get_micro_directories() -> List[str]:
     # Directories where the "electro_c-rate.csv" live
     micro_dirs = os.listdir(os.getcwd())
     # Parse out directories - i.e., no png/json/ipynb files
-    micro_dirs = [file for file in micro_dirs
-                  if not any(True for substr in
-                             ['.png', '.json', '.ipynb', '.DS_Store',
-                                 '.git', '.gitignore', '.py', '_*']
-                             if substr in file)]
+    micro_dirs = [
+        file for file in micro_dirs
+        if not any(True for substr in
+                   ['.png', '.json', '.ipynb', '.DS_Store',
+                    '.git', '.gitignore', '.py', '_*']
+                   if substr in file)
+    ]
 
     micro_dirs.sort()
     micro_dirs = [os.path.join(os.getcwd(), dirr) for dirr in micro_dirs]
 
     return micro_dirs
 
-# Can refactor into common utils
-
 
 def read_user_settings() -> dict:
+    # Can refactor into common utils
     f = open("colourmap_specs.json", "r")
     ret = json.load(f)
     return ret
 
-# Can refactor into common utils
-
 
 def read_metadata(micro_fname: str) -> list:
+    # Can refactor into common utils
     f = open(micro_fname, "r")
     ret = json.load(f)
     return ret
 
-# Formats the electrochem filename
-
 
 def get_electrochem_csv(c_rate: str) -> str:
+    # Formats the electrochem filename
     fname = "electro_%s.csv" % (c_rate)
     return fname
 
-# For a specific:
-# - microstructure
-# - c-rate
 
+def read_csv_into_pandas(
+        micro_path: str,
+        c_rate: str,
+        header_row: int) -> pd.DataFrame:
+    # For a specific:
+    # - microstructure
+    # - c-rate
 
-def read_csv_into_pandas(micro_path: str,
-                         c_rate: str,
-                         header_row: int) -> pd.DataFrame:
     # Get the electrochem file
     c_rate_csv = get_electrochem_csv(c_rate)
     file_path = os.path.join(micro_path, c_rate_csv)
@@ -92,23 +90,23 @@ def read_csv_into_pandas(micro_path: str,
 
     return dataframe
 
-# get_colored_vertices returns a X and Y vector for values that
-# are associated with a SoL value from COMSOL
-#
-# We use these to interpolate
-#
-# In pixel and not micrometer scale
-
 
 def get_colored_vertices(df: pd.DataFrame,
                          xy_col: Tuple[pd.DataFrame, pd.DataFrame],
                          scale: int) -> Tuple[np.array, np.array]:
+    # get_colored_vertices returns a X and Y vector for values that
+    # are associated with a SoL value from COMSOL
+    #
+    # We use these to interpolate
+    #
+    # In pixel and not micrometer scale
+
     _to_pix = 1e6 * scale
 
     X_col, Y_col = xy_col
 
-    X = dataframe[X_col].to_numpy()
-    Y = dataframe[Y_col].to_numpy()
+    X = df[X_col].to_numpy()
+    Y = df[Y_col].to_numpy()
 
     # Converting from micrometers to pixel
     X = np.ceil(X * _to_pix).astype(np.int64) - 1
@@ -116,18 +114,12 @@ def get_colored_vertices(df: pd.DataFrame,
 
     return (X, Y)
 
-# Get the timestep, t, from the column header
-
 
 def _get_timestep(df: pd.DataFrame, col: int) -> str:
+    # Get the timestep, t, from the column header
     time = df.columns[col].split(" ")
     time = time[-1].split("=")[-1]
     return time
-
-# create_colormap_image collates everything into one
-#
-# Current version uses normalized SoL so almost every image will
-# have a visible colormap.
 
 
 def create_colormap_image(
@@ -141,6 +133,7 @@ def create_colormap_image(
         L: int,
         grid_size,
         scale: int) -> np.array:
+    # create_colormap_image collates everything into one
 
     # Create blank image to house SoL data from CSV files
     im = np.zeros((h_cell * scale, L * scale, RGB_DIM))
@@ -173,9 +166,6 @@ def create_colormap_image(
 
     return im
 
-# Interpolates the State-of-Lithiation, which is represented by the
-# color, using the available SoL values as per the COMSOL vertices.
-
 
 def interpolate_circle_color(
         circle: dict[str],
@@ -184,6 +174,8 @@ def interpolate_circle_color(
         xy_col: Tuple[pd.DataFrame, pd.DataFrame],
         grid_size: int,
         scale: int) -> Tuple[np.array, np.array, np.array]:
+    # Interpolates the State-of-Lithiation, which is represented by the
+    # color, using the available SoL values as per the COMSOL vertices.
 
     _to_pix = 1e6 * scale
 
@@ -223,13 +215,12 @@ def interpolate_circle_color(
     # return (xx, yy, SoL_mesh)
     return (x_inter, y_inter, sol_inter)
 
-# This drops all NaNs in the same location
-
 
 def _drop_nan_from_interpolate(
         xy_col: Tuple[pd.DataFrame, pd.DataFrame],
         meshgrid: MESHGRID,
         SoL_interpolated: MESHGRID) -> Tuple[np.array, np.array, np.array]:
+    # This drops all NaNs in the same location
 
     X_col, Y_col = xy_col
     xx, yy = meshgrid
@@ -249,10 +240,11 @@ def _drop_nan_from_interpolate(
     return (x_filt, y_filt, sol_filt)
 
 
-# Can refactor into common uitls
 def _get_inscribing_coords(x: str,
                            y: str,
                            R: str) -> Tuple[float, float, float, float]:
+    # Can refactor into common uitls
+
     # Conversion factor from um to pixels
     _to_um = 1e-6
 
