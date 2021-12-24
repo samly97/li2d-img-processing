@@ -91,9 +91,10 @@ def read_csv_into_pandas(
     return dataframe
 
 
-def get_colored_vertices(df: pd.DataFrame,
-                         xy_col: Tuple[pd.DataFrame, pd.DataFrame],
-                         scale: int) -> Tuple[np.array, np.array]:
+def get_colored_vertices(
+        df: pd.DataFrame,
+        xy_col: Tuple[pd.DataFrame, pd.DataFrame],
+        scale: int) -> Tuple[np.array, np.array]:
     # get_colored_vertices returns a X and Y vector for values that
     # are associated with a SoL value from COMSOL
     #
@@ -257,8 +258,6 @@ def _get_inscribing_coords(x: str,
 
     return (x_min, x_max, y_min, y_max)
 
-# Vertices which already has color
-
 
 def _get_filled_vertices(
         df: pd.DataFrame,
@@ -269,6 +268,7 @@ def _get_filled_vertices(
         xy_col: Tuple[pd.DataFrame, pd.DataFrame]) -> Tuple[np.array,
                                                             np.array,
                                                             np.array]:
+    # Vertices which already has color
 
     X_col, Y_col = xy_col
     x_min, x_max, y_min, y_max = _get_inscribing_coords(x, y, R)
@@ -283,13 +283,13 @@ def _get_filled_vertices(
 
     return (x_vertices, y_vertices, SoL_vertices)
 
-# Can refactor into common utils
 
-
-def _get_inscribing_meshgrid(x: str,
-                             y: str,
-                             R: str,
-                             grid_size: int) -> MESHGRID:
+def _get_inscribing_meshgrid(
+        x: str,
+        y: str,
+        R: str,
+        grid_size: int) -> MESHGRID:
+    # Can refactor into common utils
     x_min, x_max, y_min, y_max = _get_inscribing_coords(x, y, R)
 
     x_linspace = np.linspace(x_min, x_max, grid_size)
@@ -299,13 +299,13 @@ def _get_inscribing_meshgrid(x: str,
 
     return (xx, yy)
 
-# Can refactor into common utils
 
-
-def _get_coords_in_circle(x: str,
-                          y: str,
-                          R: str,
-                          meshgrid: MESHGRID) -> MESHGRID:
+def _get_coords_in_circle(
+        x: str,
+        y: str,
+        R: str,
+        meshgrid: MESHGRID) -> MESHGRID:
+    # Can refactor into common utils
     _to_um = 1e-6
 
     xx, yy = meshgrid
@@ -321,11 +321,11 @@ def _get_coords_in_circle(x: str,
 
     return (xx, yy)
 
-# Can refactor into common utils
 
-
-def save_colmap_png(micro_im: np.array,
-                    fname: str):
+def save_colmap_png(
+        micro_im: np.array,
+        fname: str):
+    # Can refactor into common utils
     im = Image.fromarray((255 * micro_im).astype(np.uint8))
     im.save(fname)
 
