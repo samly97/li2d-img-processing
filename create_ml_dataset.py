@@ -472,13 +472,13 @@ def create_activations(
         circles = micro_data[micro_idx - 1]["circles"]
 
         for circle in tqdm(circles):
-            x = circle["x"]
-            y = circle["y"]
-            R = circle["R"]
+            x_str = circle["x"]
+            y_str = circle["y"]
+            R_str = circle["R"]
 
-            x = float(x)
-            y = float(y)
-            R = float(R)
+            x = float(x_str)
+            y = float(y_str)
+            R = float(R_str)
 
             in_circ = np.sqrt((yy - y) ** 2 + (xx - x) ** 2) <= R
 
@@ -509,8 +509,8 @@ def create_activations(
             # Save metadata to JSON dict
             activation_json[act_num] = {
                 "micro": micro_idx,
-                "x": str(x),
-                "y": str(y),
+                "x": x_str,
+                "y": y_str,
             }
 
             # Incremement activation num
