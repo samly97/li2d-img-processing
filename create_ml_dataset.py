@@ -6,8 +6,10 @@ import numpy as np
 from math import ceil
 from PIL import Image
 from skimage import io
-# from skimage.transform import resize
+from scipy.ndimage import zoom
 import matplotlib.pyplot as plt
+
+import pdb
 
 ####################################
 # CREATE MACHINE LEARNING DATASET ##
@@ -20,8 +22,8 @@ import matplotlib.pyplot as plt
 #   the colors completely. Will need to decide what to do. Could decide to
 #   interpolate the edges or we could use the difference between the circles
 #   and the generated color and just fill it in with the background.
-# - incorporate BOUNDING_BOX parameterization
-# - zoom ratios
+# - incorporate BOUNDING_BOX parameterization ✅
+# - zoom ratios ✅
 
 # Current Pseudo Code
 """
@@ -219,7 +221,7 @@ def get_micro_colmaps(microstructure: int) -> List[str]:
 
 def generate_ml_dataset(
         cell_params: Tuple[int, int],
-        settings: Tuple[int, int],
+        settings: Tuple[int, int, int],
         directories: Tuple[str, str, str],
         microstructures,
 ):
@@ -230,7 +232,7 @@ def generate_ml_dataset(
     '''
 
     L, h_cell = cell_params
-    scale, box_radius = settings
+    scale, output_img_size, width_wrt_radius = settings
     dataset_dir, input_dir, label_dir = directories
 
     meshgrid = get_electrode_meshgrid(L, h_cell, scale)
@@ -261,6 +263,9 @@ def generate_ml_dataset(
                 y = particle['y']
                 R = particle['R']
 
+                # Size image according to radius factor
+                box_radius = ceil(float(R) * scale * width_wrt_radius)
+
                 input_im, label_im = extract_input_and_cmap_im(
                     box_radius,
                     micro_im,
@@ -268,6 +273,9 @@ def generate_ml_dataset(
                     (x, y, R),
                     meshgrid,
                     scale)
+
+                input_im, zoom_factor = _zoom_image(input_im, output_img_size)
+                label_im, _ = _zoom_image(label_im, output_img_size)
 
                 # Save input image
                 input_fname = os.path.join(
@@ -290,6 +298,7 @@ def generate_ml_dataset(
                     "x": x,
                     "y": y,
                     "R": R,
+                    "zoom_factor": zoom_factor,
                     "c-rate": c_rate,
                     "time": time,
                     "dist_from_sep": float(x)/L,
@@ -304,6 +313,19 @@ def generate_ml_dataset(
 
     with open(dataset_json_fname, 'w') as outfile:
         json.dump(dataset_json, outfile, indent=4)
+
+
+def _zoom_image(
+    img: np.array,
+    output_img_size: int = 200
+) -> Tuple[np.array, float]:
+
+    img_size, _, _ = img.shape
+    zoom_factor = output_img_size / img_size
+    zoom_tuple = (zoom_factor,) * 2 + (1,)
+
+    ret_im = zoom(img, zoom_tuple)
+    return ret_im, zoom_factor
 
 
 def extract_input_and_cmap_im(box_radius: int,
@@ -477,8 +499,9 @@ if __name__ == "__main__":
     # Resolution of the colormap images relative to the dimensions
     scale = settings["scale"]
 
-    # How big each extracted image should be
-    box_radius = settings["box_radius"]
+    # How big the box should be with respect to the radius of the circle
+    width_wrt_radius = settings["width_wrt_radius"]
+    output_img_size = settings["img_size"]
 
     # Create directories and return path of each
     (dataset_dir,
@@ -493,7 +516,7 @@ if __name__ == "__main__":
     # Generate Machine Learning data
     generate_ml_dataset(
         (L, h_cell),
-        (scale, box_radius),
+        (scale, output_img_size, width_wrt_radius),
         (dataset_dir, input_dir, label_dir),
         micro_data,
     )
