@@ -130,24 +130,20 @@ def read_metadata(micro_fname: str) -> list:
 
 
 def create_output_dirs(input_dir: str,
-                       label_dir: str,
-                       activation_dir: str) -> Tuple[str, str, str, str]:
+                       label_dir: str) -> Tuple[str, str, str]:
 
     curr_dir = os.getcwd()
     dataset_dir = os.path.join(curr_dir, "dataset")
     input_image_dir = os.path.join(dataset_dir, input_dir)
     label_image_dir = os.path.join(dataset_dir, label_dir)
-    activation_image_dir = os.path.join(dataset_dir, activation_dir)
 
     _create_dir(dataset_dir)
     _create_dir(input_image_dir)
     _create_dir(label_image_dir)
-    _create_dir(activation_image_dir)
 
     return (dataset_dir,
             input_image_dir,
-            label_image_dir,
-            activation_image_dir)
+            label_image_dir)
 
 
 def _create_dir(dir: str):
@@ -437,92 +433,6 @@ def _add_color_to_background(micro_im: np.array,
     return ret_im
 
 
-def create_activations(
-    fname: str,
-        cell_params: Tuple[int, int],
-        micro_data,
-        dataset_dir: str,
-        activation_dir: str,
-        box_radius: int,
-        start_idx: int,
-        end_idx: int,
-        scale=10):
-    r''' create_activations ...
-
-    TODO:
-    -	incorporate zoom/aspect ratio
-    '''
-
-    _white = np.array([255, 255, 255])
-
-    L, h_cell = cell_params
-
-    activation_json = {}
-
-    # Meshgrid of cell geometry
-    xx, yy = get_electrode_meshgrid(L, h_cell, scale)
-
-    # Blank image
-    micro_im = np.zeros((h_cell * scale, L * scale, 3), dtype=int)
-
-    # Activation picture number
-    act_num = 1
-
-    for micro_idx in tqdm(range(start_idx, end_idx + 1)):
-        circles = micro_data[micro_idx - 1]["circles"]
-
-        for circle in tqdm(circles):
-            x_str = circle["x"]
-            y_str = circle["y"]
-            R_str = circle["R"]
-
-            x = float(x_str)
-            y = float(y_str)
-            R = float(R_str)
-
-            in_circ = np.sqrt((yy - y) ** 2 + (xx - x) ** 2) <= R
-
-            new_im = np.copy(micro_im)
-            new_im[in_circ] = _white
-
-            padded_im = _pad_image(
-                new_im,
-                box_radius)
-
-            x_new, y_new = _padded_coords(
-                x,
-                y,
-                box_radius,
-                scale)
-
-            act_im = padded_im[
-                y_new - box_radius: y_new + box_radius - 1,
-                x_new - box_radius: x_new + box_radius - 1,
-                :
-            ]
-
-            act_im_fname = os.path.join(
-                activation_dir,
-                str(act_num) + ".png")
-            save_micro_png(act_im, act_im_fname)
-
-            # Save metadata to JSON dict
-            activation_json[act_num] = {
-                "micro": micro_idx,
-                "x": x_str,
-                "y": y_str,
-            }
-
-            # Incremement activation num
-            act_num += 1
-
-        # Save JSON data
-    act_im_json = os.path.join(dataset_dir, fname)
-
-    with open(act_im_json, 'w') as outfile:
-        json.dump(activation_json, outfile, indent=4)
-
-
 def _pad_image(orig_im: np.array,
                pad_width: int,
                pad_type="constant") -> np.array:
@@ -573,26 +483,12 @@ if __name__ == "__main__":
     # Create directories and return path of each
     (dataset_dir,
      input_dir,
-     label_dir,
-     activation_dir) = create_output_dirs(
+     label_dir) = create_output_dirs(
         settings["input_dir"],
-        settings["label_dir"],
-        settings["activation_dir"])
+        settings["label_dir"])
 
     # Load metadata generated from COMSOL
     micro_data = read_metadata("metadata.json")
-
-    # Create the "activation" pictures
-    create_activations(
-        "activations.json",
-        (L, h_cell),
-        micro_data,
-        dataset_dir,
-        activation_dir,
-        box_radius,
-        start_idx=1,
-        end_idx=5,
-        scale=scale)
 
     # Generate Machine Learning data
     generate_ml_dataset(
