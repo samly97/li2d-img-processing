@@ -1,8 +1,12 @@
 from typing import Tuple
 
 import numpy as np
-import json
-from PIL import Image
+
+from utils.io import load_json
+from utils.io import save_micro_png
+
+from utils.numerics import get_coords_in_circle
+from utils.numerics import get_inscribing_meshgrid
 
 RBG_DIM = 3
 
@@ -10,26 +14,6 @@ GREEN = np.array([0, 128, 0])
 TEAL = np.array([0, 128, 128])
 
 MESHGRID = Tuple[np.array, np.array]
-
-
-def read_user_settings() -> dict:
-    f = open("specs.json", "r")
-    ret = json.load(f)
-    return ret
-
-
-def read_metadata(micro_fname: str) -> list:
-    f = open(micro_fname, "r")
-    ret = json.load(f)
-    return ret
-
-
-def save_micro_png(
-    micro_im: np.array,
-    fname: str,
-):
-    im = Image.fromarray(micro_im.astype(np.uint8))
-    im.save(fname)
 
 
 def create_micro_png(
@@ -47,8 +31,8 @@ def create_micro_png(
     for circ in circ_list:
         x, y, R = circ["x"], circ["y"], circ["R"]
 
-        xx, yy = _get_inscribing_meshgrid(x, y, R, grid_size)
-        xx, yy = _get_coords_in_circle(x, y, R, (xx, yy))
+        xx, yy = get_inscribing_meshgrid(x, y, R, grid_size)
+        xx, yy = get_coords_in_circle(x, y, R, (xx, yy))
 
         micro_im = fill_circle_with_colour(micro_im,
                                            (xx, yy),
@@ -58,60 +42,6 @@ def create_micro_png(
     micro_im[pore_space] = GREEN
 
     return micro_im
-
-
-def _get_inscribing_coords(
-    x: str,
-    y: str,
-    R: str,
-) -> Tuple[float, float, float, float]:
-    # Conversion factor from um to pixels
-    _to_um = 1e-6
-
-    x, y, R = float(x), float(y), float(R)
-
-    x_min = (x - R) * _to_um
-    x_max = (x + R) * _to_um
-    y_min = (y - R) * _to_um
-    y_max = (y + R) * _to_um
-
-    return (x_min, x_max, y_min, y_max)
-
-
-def _get_inscribing_meshgrid(
-        x: str,
-        y: str,
-        R: str,
-        grid_size: int,
-) -> MESHGRID:
-    x_min, x_max, y_min, y_max = _get_inscribing_coords(x, y, R)
-
-    x_linspace = np.linspace(x_min, x_max, grid_size)
-    y_linspace = np.linspace(y_min, y_max, grid_size)
-
-    xx, yy = np.meshgrid(x_linspace, y_linspace)
-
-    return (xx, yy)
-
-
-def _get_coords_in_circle(x: str,
-                          y: str,
-                          R: str,
-                          meshgrid: MESHGRID) -> MESHGRID:
-    _to_um = 1e-6
-
-    xx, yy = meshgrid
-    xx = np.copy(xx)
-    yy = np.copy(yy)
-
-    x, y, R = float(x) * _to_um, float(y) * _to_um, float(R) * _to_um
-
-    in_circ = np.sqrt((xx - x) ** 2 + (yy - y) ** 2) <= R
-
-    xx = xx[in_circ]
-    yy = yy[in_circ]
-
-    return (xx, yy)
 
 
 def fill_circle_with_colour(micro_im: np.array,
@@ -132,8 +62,8 @@ def fill_circle_with_colour(micro_im: np.array,
 
 
 if __name__ == "__main__":
-    settings = read_user_settings()
-    ret = read_metadata("metadata.json")
+    settings = load_json("specs.json")
+    ret = load_json("metadata.json")
     for i, micro in enumerate(ret):
         micro_im = create_micro_png(
             micro,

@@ -3,14 +3,18 @@ from typing import List, Tuple
 
 from tqdm import tqdm
 
-import json
 import pandas as pd
 
 import numpy as np
 from scipy.interpolate import griddata
 from matplotlib import cm
 
-from PIL import Image
+from utils.io import load_json
+from utils.io import save_micro_png
+
+from utils.numerics import get_inscribing_meshgrid
+from utils.numerics import get_inscribing_coords
+from utils.numerics import get_coords_in_circle
 
 RGB_DIM = 3
 
@@ -46,20 +50,6 @@ def get_micro_directories() -> List[str]:
     micro_dirs = [os.path.join(os.getcwd(), dirr) for dirr in micro_dirs]
 
     return micro_dirs
-
-
-def read_user_settings() -> dict:
-    # Can refactor into common utils
-    f = open("colourmap_specs.json", "r")
-    ret = json.load(f)
-    return ret
-
-
-def read_metadata(micro_fname: str) -> list:
-    # Can refactor into common utils
-    f = open(micro_fname, "r")
-    ret = json.load(f)
-    return ret
 
 
 def get_electrochem_csv(c_rate: str) -> str:
@@ -182,8 +172,8 @@ def interpolate_circle_color(
 
     x, y, R = circle["x"], circle["y"], circle["R"]
 
-    xx, yy = _get_inscribing_meshgrid(x, y, R, grid_size)
-    xx, yy = _get_coords_in_circle(x, y, R, (xx, yy))
+    xx, yy = get_inscribing_meshgrid(x, y, R, grid_size)
+    xx, yy = get_coords_in_circle(x, y, R, (xx, yy))
 
     # (x, y) values within the circle with values to interpolate from
     (
@@ -241,24 +231,6 @@ def _drop_nan_from_interpolate(
     return (x_filt, y_filt, sol_filt)
 
 
-def _get_inscribing_coords(x: str,
-                           y: str,
-                           R: str) -> Tuple[float, float, float, float]:
-    # Can refactor into common uitls
-
-    # Conversion factor from um to pixels
-    _to_um = 1e-6
-
-    x, y, R = float(x), float(y), float(R)
-
-    x_min = (x - R) * _to_um
-    x_max = (x + R) * _to_um
-    y_min = (y - R) * _to_um
-    y_max = (y + R) * _to_um
-
-    return (x_min, x_max, y_min, y_max)
-
-
 def _get_filled_vertices(
         df: pd.DataFrame,
         time_col: int,
@@ -271,7 +243,7 @@ def _get_filled_vertices(
     # Vertices which already has color
 
     X_col, Y_col = xy_col
-    x_min, x_max, y_min, y_max = _get_inscribing_coords(x, y, R)
+    x_min, x_max, y_min, y_max = get_inscribing_coords(x, y, R)
 
     filtered_by_x = df[df[X_col].between(x_min, x_max)]
     filtered_by_y = filtered_by_x[filtered_by_x[Y_col].between(y_min, y_max)]
@@ -284,54 +256,8 @@ def _get_filled_vertices(
     return (x_vertices, y_vertices, SoL_vertices)
 
 
-def _get_inscribing_meshgrid(
-        x: str,
-        y: str,
-        R: str,
-        grid_size: int) -> MESHGRID:
-    # Can refactor into common utils
-    x_min, x_max, y_min, y_max = _get_inscribing_coords(x, y, R)
-
-    x_linspace = np.linspace(x_min, x_max, grid_size)
-    y_linspace = np.linspace(y_min, y_max, grid_size)
-
-    xx, yy = np.meshgrid(x_linspace, y_linspace)
-
-    return (xx, yy)
-
-
-def _get_coords_in_circle(
-        x: str,
-        y: str,
-        R: str,
-        meshgrid: MESHGRID) -> MESHGRID:
-    # Can refactor into common utils
-    _to_um = 1e-6
-
-    xx, yy = meshgrid
-    xx = np.copy(xx)
-    yy = np.copy(yy)
-
-    x, y, R = float(x) * _to_um, float(y) * _to_um, float(R) * _to_um
-
-    in_circ = np.sqrt((xx - x) ** 2 + (yy - y) ** 2) <= R
-
-    xx = xx[in_circ]
-    yy = yy[in_circ]
-
-    return (xx, yy)
-
-
-def save_colmap_png(
-        micro_im: np.array,
-        fname: str):
-    # Can refactor into common utils
-    im = Image.fromarray((255 * micro_im).astype(np.uint8))
-    im.save(fname)
-
-
 if __name__ == "__main__":
-    settings = read_user_settings()
+    settings = load_json("colourmap_specs.json")
 
     L = settings["L"]
     h_cell = settings["h_cell"]
@@ -341,7 +267,7 @@ if __name__ == "__main__":
     scale = settings["scale"]
 
     micro_dirs = get_micro_directories()
-    microstructures = read_metadata("metadata.json")
+    microstructures = load_json("metadata.json")
 
     # COLOR MAP
     col_map = nice_cm(settings["colormap"])
@@ -396,4 +322,4 @@ if __name__ == "__main__":
 
                 filename = "c%s_t%s.png" % (c_rate_exp, time)
                 filename = os.path.join(output_dir, filename)
-                save_colmap_png(im, filename)
+                save_micro_png(im * 255, filename)
