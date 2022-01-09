@@ -9,7 +9,7 @@ def get_inscribing_meshgrid(
     y: str,
     R: str,
     grid_size: int,
-    to_um: int = 1e-6,
+    to_um: float = 1e-6,
 ) -> MESHGRID:
     r'''
     Inputs:
@@ -37,7 +37,7 @@ def get_inscribing_coords(
     x: str,
     y: str,
     R: str,
-    to_um: int = 1e-6,
+    to_um: float = 1e-6,
 ) -> Tuple[float, float, float, float]:
     r''' get_inscribing_coords returns a  tuple indicating the (min, max)
     values of where the particle "ends" essentially. Used to construct a
@@ -59,7 +59,7 @@ def get_coords_in_circle(
     y: str,
     R: str,
     meshgrid: MESHGRID,
-    to_um: int = 1e-6,
+    to_um: float = 1e-6,
 ) -> MESHGRID:
     r''' get_coords_in_circle determines the indexes in the meshgrid which are
     in the particle of interest. This method is used to determine which pixels
