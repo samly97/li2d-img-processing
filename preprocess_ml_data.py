@@ -4,24 +4,8 @@ from math import ceil
 import numpy as np
 from random import shuffle
 import tensorflow as tf
-import json
 
-
-def read_user_settings() -> dict:
-    # Can refactor into common utils
-    f = open("pipeline.json", "r")
-    ret = json.load(f)
-    return ret
-
-
-def read_json(
-        fname: str,
-        path=os.getcwd()):
-    # Can refactor into common utils
-    f = open(os.path.join(path, fname), "r")
-    data = json.load(f)
-
-    return data
+from utils.io import load_json
 
 
 def parse_raw_data(
@@ -223,7 +207,7 @@ def preprocess_ml_data() -> Tuple[
     r''' Define alternate entry point to when the script is not being called
     explicitly, i.e., cases other than "__name__ == __main__".
     '''
-    settings = read_user_settings()
+    settings = load_json("pipeline.json")
 
     norm_metadata = (
         settings["L"],
@@ -234,10 +218,11 @@ def preprocess_ml_data() -> Tuple[
         settings["time"],
     )
 
-    dataset_json = read_json(
+    dataset_json = load_json(
         settings["dataset_data"],
-        os.path.join(os.getcwd(), settings["data_dir"]),
+        path=os.path.join(os.getcwd(), settings["data_dir"]),
     )
+
     pic_num = parse_raw_data(
         settings["data_dir"],
         settings["input_dir"]

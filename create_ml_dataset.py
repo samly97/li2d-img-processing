@@ -4,9 +4,11 @@ from tqdm import tqdm
 import json
 import numpy as np
 from math import ceil
-from PIL import Image
 from skimage import io
 from scipy.ndimage import zoom
+
+from utils.io import load_json
+from utils.io import save_micro_png
 
 ####################################
 # CREATE MACHINE LEARNING DATASET ##
@@ -28,20 +30,6 @@ TEAL = np.array([0, 128, 128])
 
 # Custom typings
 MESHGRID = Tuple[np.array, np.array]
-
-
-def read_user_settings() -> dict:
-    # Can refactor into common utils
-    f = open("dataset_specs.json", "r")
-    ret = json.load(f)
-    return ret
-
-
-def read_metadata(micro_fname: str) -> list:
-    # Can refactor into common utils
-    f = open(micro_fname, "r")
-    ret = json.load(f)
-    return ret
 
 
 def create_output_dirs(input_dir: str,
@@ -394,17 +382,9 @@ def _padded_coords(
     return (x_new, y_new)
 
 
-def save_micro_png(
-        micro_im: np.array,
-        fname: str):
-    # Can refactor this into common utils
-    im = Image.fromarray(micro_im.astype(np.uint8))
-    im.save(fname)
-
-
 if __name__ == "__main__":
     # Load user settings
-    settings = read_user_settings()
+    settings = load_json("dataset_specs.json")
 
     L = settings["L"]
     h_cell = settings["h_cell"]
@@ -424,7 +404,7 @@ if __name__ == "__main__":
         settings["label_dir"])
 
     # Load metadata generated from COMSOL
-    micro_data = read_metadata("metadata.json")
+    micro_data = load_json("metadata.json")
 
     # Generate Machine Learning data
     generate_ml_dataset(
