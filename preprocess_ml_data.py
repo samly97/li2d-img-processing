@@ -1,5 +1,5 @@
 import os
-from typing import Dict, List, Tuple
+from typing import List, Tuple
 from math import ceil
 import numpy as np
 from random import shuffle
@@ -53,79 +53,10 @@ def shuffle_dataset(
     return pic_num
 
 
-def create_activation_mapping(
-    act_json_fname: str,
-    data_dir: str,
-) -> Dict[int, Dict[Tuple[str, str], str]]:
-    r''' There is an activation for each extracted image. Since there are
-    multiple experiments per microstructure we will be reusing the activations,
-    so there is a need to be able to search for which activation an extracted
-    image belongs to.
-
-    Specifically: num( extracted_imgs ) >> num( activated_imgs )
-
-    Inputs:
-    - act_json_fname: str
-    - data_dir: str; where "act_json_fname" is, i.e. data_dir/act_json_fname
-    '''
-
-    activation_data = read_json(
-        act_json_fname,
-        os.path.join(os.getcwd(), data_dir),
-    )
-
-    ret_mapping = {}
-
-    for _, pic_num in enumerate(activation_data):
-        micro_num = activation_data[pic_num]['micro']
-        x = activation_data[pic_num]["x"]
-        y = activation_data[pic_num]["y"]
-
-        micro_hash = ret_mapping.get(micro_num, {})
-        micro_hash[(x, y)] = pic_num
-
-        ret_mapping[micro_num] = micro_hash
-
-    return ret_mapping
-
-
-def get_activation_num_dataset(
-    dataset_image_numbers: np.array,
-    activation_mapping: Dict[int, Dict[Tuple[str, str], str]],
-    dataset_data,
-) -> Dict[str, str]:
-    r'''Create a function to get the activation number filename for each image
-    in a train/val/test dataset.
-
-    Inputs:
-    - dataset_image_numbers: np.array of string type
-
-    Returns:
-    - ML dataset of filenames
-    '''
-
-    ret_act_fnames = {}
-
-    for i, im_num in enumerate(dataset_image_numbers):
-        circle_hash = dataset_data[im_num]
-
-        # Get which microstructure the image belongs to
-        micro_num = circle_hash["micro"]
-        x = circle_hash["x"]
-        y = circle_hash["y"]
-
-        act_num = activation_mapping[micro_num][(x, y)]
-        ret_act_fnames[im_num] = act_num
-
-    return ret_act_fnames
-
-
 def get_split_indices(
     trn_split: int,
     val_split: int,
     pic_num: np.array,
-
-
 ) -> Tuple[Tuple[int, int], Tuple[int, int], Tuple[int, int]]:
 
     trn_idx = ceil(len(pic_num) * trn_split)
@@ -137,23 +68,17 @@ def get_split_indices(
 
 def get_ml_dataset(
     pic_num: np.array,
-    act_mapping: Dict[str, str],
     dataset_json,
     im_size: int,
     batch_size: int,
     norm_metadata: Tuple[int, int, int, int, int],
-    dirs: Tuple[str, str, str, str],
+    dirs: Tuple[str, str, str],
     start_idx: int,
     end_idx: int,
 ):
     AUTOTUNE = tf.data.AUTOTUNE
 
-    data_dir, input_dir, act_dir, label_dir = dirs
-
-    act_table = _get_static_hash_table(
-        act_mapping,
-        val_fn=lambda num: act_mapping[num],
-        default_value="")
+    data_dir, input_dir, label_dir = dirs
 
     new_data = _get_static_hash_table(
         dataset_json,
@@ -174,21 +99,12 @@ def get_ml_dataset(
             input_dir,
             im_size,
         )
-        act_im = _load_image(
-            _get_act_num(
-                pic_num,
-                act_table,
-            ),
-            data_dir,
-            act_dir,
-            im_size,
-        )
         metadata = _format_metadata(
             pic_num,
             new_data,
         )
 
-        return input_im, act_im, metadata
+        return input_im, metadata
 
     def process_path_targets(pic_num):
         label_im = _load_image(
@@ -254,19 +170,20 @@ def format_metadata(
     the strings are split and parsed into floats.
     '''
 
-    L, h_cell, R_max, c_rate_norm, time_norm = norm_metadata
+    L, h_cell, R_max, zoom_norm, c_rate_norm, time_norm = norm_metadata
 
     hash = dataset_json[pic_num]
 
     x = float(hash["x"]) / L
     y = float(hash["y"]) / h_cell
     R = float(hash["R"]) / R_max
+    zoom = float(hash["zoom_factor"]) / zoom_norm
     c_rate = float(hash["c-rate"]) / c_rate_norm
     time = float(hash["time"]) / time_norm
     porosity = float(hash["porosity"])
     dist_from_sep = float(hash["dist_from_sep"])
 
-    as_float = [x, y, R, c_rate, time, porosity, dist_from_sep]
+    as_float = [x, y, R, zoom, c_rate, time, porosity, dist_from_sep]
 
     s = "-"
     ret = s.join([str(num) for num in as_float])
@@ -287,13 +204,6 @@ def _load_image(
     img = tf.io.decode_png(img, channels=3)
     img = tf.image.resize(img, (im_size, im_size))
     return img
-
-
-def _get_act_num(
-    pic_num: tf.Tensor,
-    act_table: tf.lookup.StaticHashTable,
-):
-    return act_table[pic_num]
 
 
 def _format_metadata(
@@ -319,6 +229,7 @@ def preprocess_ml_data() -> Tuple[
         settings["L"],
         settings["h_cell"],
         settings["R_max"],
+        settings["zoom_max"],
         settings["c-rate"],
         settings["time"],
     )
@@ -333,17 +244,6 @@ def preprocess_ml_data() -> Tuple[
     )
     pic_num = shuffle_dataset(pic_num)
 
-    activation_mapping = create_activation_mapping(
-        settings["activation_data"],
-        settings["data_dir"],
-    )
-
-    activation_fnames = get_activation_num_dataset(
-        pic_num,
-        activation_mapping,
-        dataset_json,
-    )
-
     trn_idx, val_idx, test_idx = get_split_indices(
         settings["trn_split"],
         settings["val_split"],
@@ -352,14 +252,12 @@ def preprocess_ml_data() -> Tuple[
 
     trn_dataset = get_ml_dataset(
         pic_num,
-        activation_fnames,
         dataset_json,
         settings["im_size"],
         settings["batch_size"],
         norm_metadata,
         (settings["data_dir"],
          settings["input_dir"],
-         settings["activation_dir"],
          settings["label_dir"]),
         start_idx=trn_idx[0],
         end_idx=trn_idx[1],
@@ -367,14 +265,12 @@ def preprocess_ml_data() -> Tuple[
 
     val_dataset = get_ml_dataset(
         pic_num,
-        activation_fnames,
         dataset_json,
         settings["im_size"],
         settings["batch_size"],
         norm_metadata,
         (settings["data_dir"],
          settings["input_dir"],
-         settings["activation_dir"],
          settings["label_dir"]),
         start_idx=val_idx[0],
         end_idx=val_idx[1],
@@ -382,14 +278,12 @@ def preprocess_ml_data() -> Tuple[
 
     test_dataset = get_ml_dataset(
         pic_num,
-        activation_fnames,
         dataset_json,
         settings["im_size"],
         settings["batch_size"],
         norm_metadata,
         (settings["data_dir"],
          settings["input_dir"],
-         settings["activation_dir"],
          settings["label_dir"]),
         start_idx=test_idx[0],
         end_idx=test_idx[1],
