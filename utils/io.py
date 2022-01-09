@@ -23,5 +23,7 @@ def save_micro_png(
     micro_im: np.array,
     fname: str,
 ):
+    r''' Values to save_micro_png should be [0, 255] for consistency.
+    '''
     im = Image.fromarray(micro_im.astype(np.uint8))
     im.save(fname)

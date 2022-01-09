@@ -39,8 +39,8 @@ def get_inscribing_coords(
     R: str,
     to_um: int = 1e-6,
 ) -> Tuple[float, float, float, float]:
-    r''' get_inscribing_coords returns a  tuple indicating the (min, max) 
-    values of where the particle "ends" essentially. Used to construct a 
+    r''' get_inscribing_coords returns a  tuple indicating the (min, max)
+    values of where the particle "ends" essentially. Used to construct a
     bounding meshgrid around the particle of interest.
     '''
 
