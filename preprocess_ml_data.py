@@ -117,7 +117,7 @@ def get_ml_dataset(
         return label_im
 
     def configure_for_performance(ds):
-        # from https://www.tensorflow.org/tutorials/load_data/images#using_tfdata_for_finer_control
+        # https://www.tensorflow.org/tutorials/load_data/images#using_tfdata_for_finer_control
         ds = ds.cache()
         ds = ds.batch(batch_size)
         ds = ds.prefetch(buffer_size=AUTOTUNE)
