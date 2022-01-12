@@ -1,4 +1,5 @@
 from typing import Dict, Tuple, List
+from tqdm import tqdm
 
 from .io import load_json
 from .image import extract_input, zoom_image
@@ -9,8 +10,6 @@ from skimage import io
 import tensorflow as tf
 
 from math import ceil
-
-(X, Y, RAD, ZOOM, C_RATE, TIME, POROSITY, DIST_FROM_SEP) = float
 
 # Custom Typings
 
@@ -95,7 +94,6 @@ def _micro_data_to_tf_loader(
     AUTOTUNE = tf.data.AUTOTUNE
 
     idx_nums = [idx for idx in range(len(arr_meta))]
-
     starting_ds = tf.data.Dataset.from_tensor_slices(idx_nums)
 
     def process_inputs(idx_num):
@@ -111,15 +109,25 @@ def _micro_data_to_tf_loader(
 
         return input_im, metadata
 
+    def fake_output(idx_num):
+        blank_im = np.zeros((tf_img_size, tf_img_size, 3))
+        blank_im = tf.convert_to_tensor(blank_im)
+        return blank_im
+
     def configure_for_performance(ds):
         ds = ds.cache()
         ds = ds.batch(batch_size)
         ds = ds.prefetch(buffer_size=AUTOTUNE)
 
+        return ds
+
     inp_ds = starting_ds.map(process_inputs, num_parallel_calls=AUTOTUNE)
     inp_ds = configure_for_performance(inp_ds)
 
-    return inp_ds
+    out_ds = starting_ds.map(fake_output, num_parallel_calls=AUTOTUNE)
+    ret_ds = tf.data.Dataset.zip((inp_ds, out_ds))
+
+    return ret_ds
 
 
 def _load_image(
@@ -127,7 +135,7 @@ def _load_image(
     arr_imgs: np.array,
     im_size: int,
 ):
-    img = arr_imgs[idx_num]
+    img = tf.gather(arr_imgs, idx_num)
     img = tf.convert_to_tensor(img)
     img = tf.image.resize(img, (im_size, im_size))
     return img
@@ -137,7 +145,7 @@ def _format_metadata(
     idx_num,
     arr_meta: List[str],
 ):
-    as_str = arr_meta[idx_num]
+    as_str = tf.gather(arr_meta, idx_num)
     str_nums = tf.strings.split(as_str, sep="-")
     ret = tf.strings.to_number(str_nums, out_type=tf.dtypes.float32)
     return ret
@@ -219,7 +227,7 @@ def _extract_image_and_meta(
         dtype=np.uint8)
     arr_meta = []
 
-    for idx, hash in enumerate(circ_data):
+    for idx, hash in tqdm(enumerate(circ_data)):
         x = hash['x']
         y = hash['y']
         r = hash['R']
@@ -265,14 +273,18 @@ def _get_circ_data(
     circle_key: str = "circles",
 ) -> _CIRC_INFO:
     microstructures = load_json(filename)
-    circle_data = microstructures[micro_key][circle_key]
+    circle_data = microstructures[micro_key - 1][circle_key]
     return circle_data
 
 
 if __name__ == "__main__":
-    micro_to_dataset_loader(
-        "metadata.json",
-        1,
-        "circles",
-        "micro_1.png"
+    input_imgs = micro_to_dataset_loader(
+        4,
+        225,
+        99,
+        32,
+        (176, 100, 10, 4.918, 4, 10800),
+        ("metadata.json", 1, "circles"),
+        ("micro_1.png", np.array([0, 128, 0]), 176),
+        (1, 10, 300),
     )
