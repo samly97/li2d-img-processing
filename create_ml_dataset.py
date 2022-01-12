@@ -5,10 +5,13 @@ import json
 import numpy as np
 from math import ceil
 from skimage import io
-from scipy.ndimage import zoom
 
 from utils.io import load_json
 from utils.io import save_micro_png
+from utils.image import zoom_image
+from utils.image import pad_image
+from utils.image import padded_coords
+from utils.metrics import measure_porosity
 
 ####################################
 # CREATE MACHINE LEARNING DATASET ##
@@ -175,8 +178,14 @@ def generate_ml_dataset(
                     meshgrid,
                     scale)
 
-                input_im, zoom_factor = _zoom_image(input_im, output_img_size)
-                label_im, _ = _zoom_image(label_im, output_img_size)
+                # Measure local porosity
+                porosity = measure_porosity(
+                    input_im,
+                    GREEN,
+                )
+
+                input_im, zoom_factor = zoom_image(input_im, output_img_size)
+                label_im, _ = zoom_image(label_im, output_img_size)
 
                 # Save input image
                 input_fname = os.path.join(
@@ -189,9 +198,6 @@ def generate_ml_dataset(
                     label_dir,
                     str(pic_num) + ".png")
                 save_micro_png(label_im, label_fname)
-
-                # Measure local porosity
-                porosity = measure_porosity(input_im)
 
                 # Write metadata to JSON
                 dataset_json[pic_num] = {
@@ -214,19 +220,6 @@ def generate_ml_dataset(
 
     with open(dataset_json_fname, 'w') as outfile:
         json.dump(dataset_json, outfile, indent=4)
-
-
-def _zoom_image(
-    img: np.array,
-    output_img_size: int = 200
-) -> Tuple[np.array, float]:
-
-    img_size, _, _ = img.shape
-    zoom_factor = output_img_size / img_size
-    zoom_tuple = (zoom_factor,) * 2 + (1,)
-
-    ret_im = zoom(img, zoom_tuple)
-    return ret_im, zoom_factor
 
 
 def extract_input_and_cmap_im(box_radius: int,
@@ -253,11 +246,11 @@ def extract_input_and_cmap_im(box_radius: int,
     # Apply the particle with color to the microstructure image
     with_color = _add_color_to_background(micro_im, with_color)
 
-    padded_with_color = _pad_image(with_color, box_radius)
-    padded_micro = _pad_image(micro_im, box_radius)
+    padded_with_color = pad_image(with_color, box_radius)
+    padded_micro = pad_image(micro_im, box_radius)
 
     # New coordinates for (x, y) after padding
-    x_new, y_new = _padded_coords(
+    x_new, y_new = padded_coords(
         x,
         y,
         box_radius,
@@ -277,37 +270,6 @@ def extract_input_and_cmap_im(box_radius: int,
     ]
 
     return input_im, label_im
-
-
-def measure_porosity(
-        micro_im: np.array
-) -> float:
-    r''' measure_porosity measures the porosity of the extracted images used in
-        the machine learning model. These images are different from the
-        microstructural image, so this measures the LOCAL (extracted) and not
-        the GLOBAL (microstructure) porosity.
-
-        Inputs:
-        - micro_im: np.array; extracted image with particle centered
-
-        Returns:
-        - porosity: float
-    '''
-
-    _black = np.array([0, 0, 0])
-
-    Y, X, _ = micro_im.shape
-
-    padding = np.all(micro_im == _black, axis=-1)
-    padding = np.sum(padding)
-
-    pore_space = np.all(micro_im == GREEN, axis=-1)
-    pore_space = np.sum(pore_space)
-
-    electrode_domain = float(Y * X - padding)
-    porosity = pore_space / electrode_domain
-
-    return porosity
 
 
 def _get_color_circle(
@@ -354,32 +316,6 @@ def _add_color_to_background(micro_im: np.array,
     ret_im = ret_im + colored_particle_im
 
     return ret_im
-
-
-def _pad_image(orig_im: np.array,
-               pad_width: int,
-               pad_type="constant") -> np.array:
-    ret_im = np.copy(orig_im)
-    ret_im = np.pad(ret_im,
-                    (
-                        (pad_width, pad_width),
-                        (pad_width, pad_width),
-                        (0, 0),
-                    ), pad_type)
-
-    return ret_im
-
-
-def _padded_coords(
-        x: str,
-        y: str,
-        pad_width: int,
-        scale=10) -> Tuple[int, int]:
-
-    y_new = ceil(float(y) * scale) + pad_width
-    x_new = ceil(float(x) * scale) + pad_width
-
-    return (x_new, y_new)
 
 
 if __name__ == "__main__":
