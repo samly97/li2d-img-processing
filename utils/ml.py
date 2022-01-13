@@ -17,6 +17,9 @@ _META_DICT = Dict[str, float]
 _CIRC_INFO = List[Dict[str, str]]
 
 
+######################################################
+# "BREAK" ELECTRODE IN ML-"LEARNABLE" IMAGES/DATASET #
+######################################################
 def micro_to_dataset_loader(
     c_rate: float,
     time: int,
@@ -26,35 +29,53 @@ def micro_to_dataset_loader(
     circle_data: Tuple[str, int, str],
     micro_data: Tuple[str, np.array, int],
     user_params: Tuple[int, int, int],
-) -> tf.data.Dataset:
-    r'''
+    arr_imgs: np.array = None,
+    arr_meta: List[_META_DICT] = None,
+) -> Tuple[tf.data.Dataset, np.array, List[_META_DICT]]:
+    r''' micro_to_dataset_loader takes a 2D electrode microstructure with
+    spherical electrode particles and creates a tf.data.Dataset loader amenable
+    for predictions using a Neural Network.
+
+    Since the image extraction process is computationally expensive, specifying
+    the "arr_imgs" and "arr_meta" data after running it for the first time will
+    save time. Thus subsequent calls to create datasets corresponding to
+    different C-rates and time steps is much quicker.
+
     Inputs:
     - circle_data: (circle_data_fname: str, micro_key: int, circle_key: str)
     - micro_data: (micro_fname: str, pore_color: np.array, cell_length: int)
     - user_params: (width_wrt_radius: int, scale: int, output_img_size: int)
     '''
 
-    arr_imgs, arr_meta = _prep_micro_data(
+    # This only runs for the first time. Extracting images is computationally
+    # expensive.
+    if arr_imgs is None or arr_meta is None:
+
+        arr_imgs, arr_meta = _prep_micro_data(
+            circle_data,
+            micro_data,
+            user_params,
+        )
+
+    arr_meta = _set_rate_and_time(
         c_rate,
         time,
-        circle_data,
-        micro_data,
-        user_params,
+        arr_meta,
     )
 
-    arr_meta = _norm_metadata(
+    normed_arr_meta = _norm_metadata(
         arr_meta,
         norm_metadata,
     )
 
     dataset_loader = _micro_data_to_tf_loader(
         arr_imgs,
-        arr_meta,
+        normed_arr_meta,
         tf_img_size,
         batch_size,
     )
 
-    return dataset_loader
+    return dataset_loader, arr_imgs, arr_meta
 
 
 def _norm_metadata(
@@ -152,8 +173,6 @@ def _format_metadata(
 
 
 def _prep_micro_data(
-    c_rate: float,
-    time: int,
     circle_data: Tuple[str, int, str],
     micro_data: Tuple[str, np.array, int],
     user_params: Tuple[int, int, int],
@@ -184,18 +203,12 @@ def _prep_micro_data(
         output_img_size,
     )
 
-    arr_meta = _set_rate_and_time(
-        c_rate,
-        time,
-        arr_meta,
-    )
-
     return arr_imgs, arr_meta
 
 
 def _set_rate_and_time(
     c_rate: float,
-    time: int,
+    time: float,
     arr_meta: List[_META_DICT]
 ) -> List[_META_DICT]:
 
