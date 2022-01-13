@@ -78,3 +78,25 @@ def get_coords_in_circle(
     yy = yy[in_circ]
 
     return (xx, yy)
+
+
+def get_electrode_meshgrid(L: int,
+                           h: int,
+                           scale=10) -> MESHGRID:
+    r'''
+    This function takes in the geometry of the electrode being analyzed and
+    returns a tuple of (xx, yy) meshgrid.
+
+    L: length of electrode (um)
+    h: height/width of electrode (um)
+    scale: scale of colmap_image RELATIVE to the original electrode geometry
+        - e.g. if L = 176, h = 100, and scale = 10, then (1760, 1000)
+    '''
+
+    # Meshgrid of coordinates of electrode domain
+    x_linspace = np.linspace(0, L, num=L * scale)
+    y_linspace = np.linspace(0, h, num=h * scale)
+
+    xx, yy = np.meshgrid(x_linspace, y_linspace)
+
+    return (xx, yy)
