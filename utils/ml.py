@@ -41,6 +41,35 @@ def tf_circle_activation(
     return ret_im
 
 
+def predict_and_rmse(
+    model,
+    dataset: tf.data.Dataset,
+    images: np.array
+) -> Tuple[np.array, tf.Tensor]:
+    '''
+    predict_and_rmse returns the predicted images as well as the Root Mean
+    Square Error (RMSE) of the given dataset. Should be used when user has
+    the target images, otherwise, the model's predict method is sufficient.
+
+    Batch size of input_data and label_data should be the same.
+
+    Inputs
+    -----
+    model: tensorflow/keras model
+    input_data: np.array of image (x, y, RGB)
+    label_data: np.array of image (x, y, RGB)
+
+    Returns
+    -----
+    pred_ims: array of predicted images by the model, same batch size as input_data
+    rmse: RMSE value. Should have size (1,)
+    '''
+    pred_ims = model.predict(dataset)
+    rmse = tf.reduce_mean(tf.square(pred_ims - images))
+    rmse = tf.sqrt(rmse)
+    return pred_ims, rmse
+
+
 ######################################################
 # "BREAK" ELECTRODE IN ML-"LEARNABLE" IMAGES/DATASET #
 ######################################################
