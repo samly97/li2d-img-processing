@@ -11,3 +11,10 @@
 *.DS_STORE
 
 *__pycache__
+
+*README.txt
+
+# Ignore Jupyter Notebook stuff
+*.ipynb*
+
+*.keras

@@ -42,7 +42,8 @@ def electrode_colormap_from_predictions(
     Inputs:
     - input_dataset: tf.data.Dataset
     - predicted_imgs: np.array
-    - norm_metadata: values used to normalize the metadata during model training
+    - norm_metadata: values used to normalize the metadata during model
+        training
     - scale: int; scales the resolution of the outputted image.
     - grid_size: int; parameter used in constructing a meshgrid. A large enough
         value should be used fill in colors. Though a balance should be made
@@ -156,7 +157,8 @@ def predict_and_rmse(
 
     Returns
     -----
-    pred_ims: array of predicted images by the model, same batch size as input_data
+    pred_ims: array of predicted images by the model, same batch size as
+        input_data
     rmse: RMSE value. Should have size (1,)
     '''
     pred_ims = model.predict(dataset)
