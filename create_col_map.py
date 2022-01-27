@@ -7,7 +7,8 @@ import pandas as pd
 
 import numpy as np
 from scipy.interpolate import griddata
-from matplotlib import cm
+
+from utils.encoder_colormap import colormap as encoder_cm
 
 from utils.io import load_json
 from utils.io import save_micro_png
@@ -21,17 +22,6 @@ RGB_DIM = 3
 GREEN = np.array([0, 128, 0])
 
 MESHGRID = Tuple[np.array, np.array]
-
-
-class nice_cm:
-    # Wrapper to avoid having to index everytime to discard the
-    # transparence value when calling the colormap
-
-    def __init__(self, color: str):
-        self.cm = cm.get_cmap(color)
-
-    def __call__(self, val: np.array):
-        return self.cm(val)[:, :3]
 
 
 def get_micro_directories() -> List[str]:
@@ -115,7 +105,7 @@ def _get_timestep(df: pd.DataFrame, col: int) -> str:
 
 def create_colormap_image(
         df: pd.DataFrame,
-        colormap: nice_cm,
+        colormap: encoder_cm,
         circles: list[dict[str]],
         time_col: int,
         xy_col: Tuple[pd.DataFrame, pd.DataFrame],
@@ -270,7 +260,7 @@ if __name__ == "__main__":
     microstructures = load_json("metadata.json")
 
     # COLOR MAP
-    col_map = nice_cm(settings["colormap"])
+    col_map = encoder_cm()
 
     for idx, micro in tqdm(enumerate(microstructures)):
         # Get the path to the microstructure for file read/write
@@ -322,4 +312,4 @@ if __name__ == "__main__":
 
                 filename = "c%s_t%s.png" % (c_rate_exp, time)
                 filename = os.path.join(output_dir, filename)
-                save_micro_png(im * 255, filename)
+                save_micro_png(im, filename)
