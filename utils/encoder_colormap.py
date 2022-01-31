@@ -1,4 +1,5 @@
 import numpy as np
+import tensorflow as tf
 
 
 class colormap():
@@ -57,15 +58,40 @@ class colormap():
 
         return rgb_im
 
-    def inverse(self, rgb_arr: np.array):
-        r''' Get the State-of-Lithiation from RGB values.
+    def inverse(
+        self,
+        rgb_arr: tf.Tensor,
+    ) -> tf.Tensor:
+        r''' inverse should work with TensorFlow operations. Take `rgb_arr` as
+        a Tensor with [img_size, img_size, 3], reshape to
+        [img_size * img_size, 1] for analysis.
+
+        Inputs:
+        - rgb_arr: RGB image of [img_size, img_size, 3] as a tf.Tensor with
+            `dtype = tf.int32`
+
+        Outputs:
+        - sol: State-of-Lithiation vector of [img_size * img_size, 1] as a
+            tf.Tensor with `dtype = tf.float32`.
+
+            Note: this does NOT filter out the particle explicity. That has to
+                be handled separately.
         '''
 
-        f = self.f
-        f2 = f ** 2
+        f = tf.cast(self.f, tf.float32)
+        f2 = tf.math.multiply(f, f)
 
-        sol = (rgb_arr[:, :, 0].astype(np.uint32) +
-               f * rgb_arr[:, :, 2].astype(np.uint32))
-        sol = (sol / f2).astype(np.float32)
+        x1 = rgb_arr[..., 0]
+        x3 = rgb_arr[..., 2]
+
+        Y, X = x1.shape
+        dim = tf.multiply(Y, X)
+
+        x1 = tf.reshape(x1, (dim, 1))
+        x3 = tf.reshape(x3, (dim, 1))
+
+        temp = tf.math.multiply(f, x3)
+        sol = tf.math.add(x1, temp)
+        sol = tf.math.divide(sol, f2)
 
         return sol

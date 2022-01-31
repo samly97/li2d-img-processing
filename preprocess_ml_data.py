@@ -6,6 +6,7 @@ from random import shuffle
 import tensorflow as tf
 
 from utils.io import load_json
+from utils.encoder_colormap import colormap as encoder_colormap
 from utils.ml import tf_circle_activation
 
 
@@ -73,6 +74,9 @@ def get_ml_dataset(
         dtype=tf.float32,
     )
 
+    # Colormap to invert RGB to SOL
+    cmap = encoder_colormap()
+
     new_data = _get_static_hash_table(
         dataset_json,
         val_fn=lambda num: format_metadata(
@@ -135,6 +139,7 @@ def get_ml_dataset(
         sol_updates = _rgb_to_sol(
             label_im,
             mask,
+            cmap,
         )
         gray_label_im = tf.image.rgb_to_grayscale(label_im)
         gray_label_im = tf.math.divide(
@@ -242,6 +247,7 @@ def _load_image(
 def _rgb_to_sol(
     im: tf.Tensor,
     indices: tf.Tensor,
+    cmap: encoder_colormap,
 ) -> tf.Tensor:
     r''' _rgb_to_sol "inverses" the RGB encoding as defined in
     `utils.encoder_colormap` to State-of-Lithiation.
@@ -257,24 +263,7 @@ def _rgb_to_sol(
         `indices`.
     '''
 
-    # Return the updates at the location specified by indaices
-
-    f = tf.cast(255, tf.float32)
-
-    x1 = im[..., 0]
-    x3 = im[..., 2]
-
-    Y, X = x1.shape
-    dim = tf.multiply(Y, X)
-
-    x1 = tf.reshape(x1, (dim, 1))
-    x3 = tf.reshape(x3, (dim, 1))
-
-    f2 = tf.math.multiply(f, f)
-    temp = tf.math.multiply(f, x3)
-    sol = tf.math.add(x1, temp)
-    sol = tf.math.divide(sol, f2)
-
+    sol = cmap.inverse(im)
     sol = tf.gather(sol, indices, axis=0)
 
     return sol
