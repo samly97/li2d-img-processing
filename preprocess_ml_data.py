@@ -7,7 +7,7 @@ import tensorflow as tf
 
 from utils.io import load_json
 from utils.encoder_colormap import colormap as encoder_colormap
-from utils.ml import tf_circle_activation
+from utils.image import circle_mask_as_vector_of_indices
 
 
 def parse_raw_data(
@@ -87,24 +87,11 @@ def get_ml_dataset(
         default_value="",
     )
 
-    # Get the particle mask
-    mask = tf_circle_activation(
-        im_size,
+    mask = circle_mask_as_vector_of_indices(
         width_wrt_radius,
-        np.array([255, 255, 255]),
-        scale=scale,
+        im_size,
+        scale,
     )
-
-    mask = mask.numpy()
-
-    # Careful with comparing floats
-    mask = np.all(mask == [1., 1., 1., ], axis=-1)
-
-    mask = mask.reshape(im_size * im_size)
-    mask = np.where(mask)
-    mask = np.array(mask)
-    mask = np.reshape(mask, (mask.size))
-    mask = tf.cast(mask, dtype=tf.int32)
 
     fname_ds = tf.data.Dataset.from_tensor_slices(pic_num[start_idx: end_idx])
 

@@ -3,7 +3,7 @@ from tqdm import tqdm
 
 from .io import load_json
 from .numerics import get_coords_in_circle, get_inscribing_meshgrid
-from .image import extract_input, zoom_image, create_circle_activation
+from .image import extract_input, zoom_image
 from .metrics import measure_porosity
 
 import numpy as np
@@ -111,30 +111,6 @@ def electrode_colormap_from_predictions(
             img_idx += 1
 
     return electrode
-
-
-def tf_circle_activation(
-    tf_img_size: int,
-    width_wrt_radius: float,
-    particle_color: np.array,
-    scale: int = 10,
-) -> tf.Tensor:
-    r'''
-    Inputs:
-    - particle_color: color specified should be integers, e.g. [0, 128, 0]
-    '''
-    img = create_circle_activation(
-        width_wrt_radius,
-        scale,
-    )
-
-    img = (img * particle_color) / 255.
-
-    ret_im = tf.convert_to_tensor(img)
-    ret_im = tf.cast(ret_im, tf.float32)
-    ret_im = tf.image.resize(ret_im, (tf_img_size, tf_img_size))
-
-    return ret_im
 
 
 def predict_and_rmse(
