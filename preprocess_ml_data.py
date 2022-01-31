@@ -6,6 +6,7 @@ from random import shuffle
 import tensorflow as tf
 
 from utils.io import load_json
+from utils.ml import tf_circle_activation
 
 
 def parse_raw_data(
@@ -74,6 +75,25 @@ def get_ml_dataset(
         default_value="",
     )
 
+    # Get the particle mask
+    mask = tf_circle_activation(
+        im_size,
+        3,
+        np.array([255, 255, 255]),
+        scale=10,
+    )
+
+    mask = mask.numpy()
+
+    # Careful with comparing floats
+    mask = np.all(mask == [1., 1., 1., ], axis=-1)
+
+    mask = mask.reshape(im_size * im_size)
+    mask = np.where(mask)
+    mask = np.array(mask)
+    mask = np.reshape(mask, (mask.size))
+    mask = tf.cast(mask, dtype=tf.int32)
+
     fname_ds = tf.data.Dataset.from_tensor_slices(pic_num[start_idx: end_idx])
 
     def process_path_inputs(pic_num):
@@ -83,6 +103,11 @@ def get_ml_dataset(
             input_dir,
             im_size,
         )
+        input_im = tf.image.rgb_to_grayscale(input_im)
+        input_im = tf.math.divide(input_im, tf.cast(
+            100, dtype=tf.float32,
+        ))
+
         metadata = _format_metadata(
             pic_num,
             new_data,
@@ -98,7 +123,21 @@ def get_ml_dataset(
             im_size,
         )
 
-        return label_im
+        sol_updates = _rgb_to_sol(
+            label_im,
+            mask,
+        )
+        gray_label_im = tf.image.rgb_to_grayscale(label_im)
+        gray_label_im = tf.math.divide(gray_label_im, tf.cast(
+            100, dtype=tf.float32,
+        ))
+        gray_label_im = _assign_sol_to_grayscale(
+            gray_label_im,
+            sol_updates,
+            mask,
+        )
+
+        return gray_label_im
 
     def configure_for_performance(ds):
         # https://www.tensorflow.org/tutorials/load_data/images#using_tfdata_for_finer_control
@@ -188,6 +227,79 @@ def _load_image(
     img = tf.io.decode_png(img, channels=3)
     img = tf.image.resize(img, (im_size, im_size))
     return img
+
+
+def _rgb_to_sol(
+    im: tf.Tensor,
+    indices: tf.Tensor,
+) -> tf.Tensor:
+    r''' _rgb_to_sol "inverses" the RGB encoding as defined in
+    `utils.encoder_colormap` to State-of-Lithiation.
+
+    This function is used within a the tf.data.Dataset pipeline.
+
+    Inputs:
+    - indices: tf.Tensor(dtype=tf.int32); index locations of the particles
+        location as a reshaped vector.
+
+    Returns:
+    - sol: tf.Tensor(dtype=tf.float32); State-of-Lithiation corresponding to
+        `indices`.
+    '''
+
+    # Return the updates at the location specified by indaices
+
+    f = tf.cast(255, tf.float32)
+
+    x1 = im[..., 0]
+    x3 = im[..., 2]
+
+    Y, X = x1.shape
+    dim = tf.multiply(Y, X)
+
+    x1 = tf.reshape(x1, (dim, 1))
+    x3 = tf.reshape(x3, (dim, 1))
+
+    f2 = tf.math.multiply(f, f)
+    temp = tf.math.multiply(f, x3)
+    sol = tf.math.add(x1, temp)
+    sol = tf.math.divide(sol, f2)
+
+    sol = tf.gather(sol, indices, axis=0)
+
+    return sol
+
+
+def _assign_sol_to_grayscale(
+    im,
+    sol,
+    indices
+):
+    r''' _assign_sol_to_grayscale essentially works like array indexing, but
+    we require a TensorFlow function, `tf.tensor_scatter_nd_update`, to handle
+    this for us.
+
+    This sets the State-of-Lithiation located in the particle of interest
+    located by `indices`, which is a reshaped vector. Then, the vector is
+    reshaped back into a grayscale image.
+    '''
+
+    Y, X, _ = im.shape
+    dim = tf.math.multiply(Y, X)
+
+    # Reshape indices to work with the scatter_update
+    indices = tf.expand_dims(indices, axis=-1)
+
+    reshaped_im = tf.reshape(im, (dim, 1))
+    reshaped_im = tf.tensor_scatter_nd_update(
+        reshaped_im,
+        indices,
+        sol
+    )
+
+    # Convert from vector to image array
+    im = tf.reshape(reshaped_im, (Y, X, 1))
+    return im
 
 
 def _format_metadata(
@@ -288,4 +400,5 @@ if __name__ == "__main__":
     Run in terminal and diagnose:
     - python preprocess_ml_data.py
     """
+    preprocess_ml_data()
     pass
