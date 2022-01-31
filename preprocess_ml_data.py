@@ -54,16 +54,24 @@ def get_split_indices(
 def get_ml_dataset(
     pic_num: np.array,
     dataset_json,
+    width_wrt_radius: float,
     im_size: int,
     batch_size: int,
     norm_metadata: Tuple[int, int, int, int, int],
     dirs: Tuple[str, str, str],
     start_idx: int,
     end_idx: int,
+    scale: int = 10,
 ):
     AUTOTUNE = tf.data.AUTOTUNE
 
     data_dir, input_dir, label_dir = dirs
+
+    # Maximum grayscale value from RGB [0,255] to gray is 100
+    _grayscale_norm = tf.cast(
+        100,
+        dtype=tf.float32,
+    )
 
     new_data = _get_static_hash_table(
         dataset_json,
@@ -78,9 +86,9 @@ def get_ml_dataset(
     # Get the particle mask
     mask = tf_circle_activation(
         im_size,
-        3,
+        width_wrt_radius,
         np.array([255, 255, 255]),
-        scale=10,
+        scale=scale,
     )
 
     mask = mask.numpy()
@@ -104,9 +112,10 @@ def get_ml_dataset(
             im_size,
         )
         input_im = tf.image.rgb_to_grayscale(input_im)
-        input_im = tf.math.divide(input_im, tf.cast(
-            100, dtype=tf.float32,
-        ))
+        input_im = tf.math.divide(
+            input_im,
+            _grayscale_norm,
+        )
 
         metadata = _format_metadata(
             pic_num,
@@ -128,9 +137,10 @@ def get_ml_dataset(
             mask,
         )
         gray_label_im = tf.image.rgb_to_grayscale(label_im)
-        gray_label_im = tf.math.divide(gray_label_im, tf.cast(
-            100, dtype=tf.float32,
-        ))
+        gray_label_im = tf.math.divide(
+            gray_label_im,
+            _grayscale_norm,
+        )
         gray_label_im = _assign_sol_to_grayscale(
             gray_label_im,
             sol_updates,
@@ -350,6 +360,7 @@ def preprocess_ml_data() -> Tuple[
     trn_dataset = get_ml_dataset(
         pic_num,
         dataset_json,
+        settings["width_wrt_radius"],
         settings["im_size"],
         settings["batch_size"],
         norm_metadata,
@@ -358,11 +369,13 @@ def preprocess_ml_data() -> Tuple[
          settings["label_dir"]),
         start_idx=trn_idx[0],
         end_idx=trn_idx[1],
+        scale=settings["scale"],
     )
 
     val_dataset = get_ml_dataset(
         pic_num,
         dataset_json,
+        settings["width_wrt_radius"],
         settings["im_size"],
         settings["batch_size"],
         norm_metadata,
@@ -371,11 +384,13 @@ def preprocess_ml_data() -> Tuple[
          settings["label_dir"]),
         start_idx=val_idx[0],
         end_idx=val_idx[1],
+        scale=settings["scale"],
     )
 
     test_dataset = get_ml_dataset(
         pic_num,
         dataset_json,
+        settings["width_wrt_radius"],
         settings["im_size"],
         settings["batch_size"],
         norm_metadata,
@@ -384,6 +399,7 @@ def preprocess_ml_data() -> Tuple[
          settings["label_dir"]),
         start_idx=test_idx[0],
         end_idx=test_idx[1],
+        scale=settings["scale"],
     )
 
     return (
