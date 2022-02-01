@@ -333,50 +333,29 @@ def preprocess_ml_data() -> Tuple[
         pic_num,
     )
 
-    trn_dataset = get_ml_dataset(
-        pic_num,
-        dataset_json,
-        settings["width_wrt_radius"],
-        settings["im_size"],
-        settings["batch_size"],
-        norm_metadata,
-        (settings["data_dir"],
-         settings["input_dir"],
-         settings["label_dir"]),
-        start_idx=trn_idx[0],
-        end_idx=trn_idx[1],
-        scale=settings["scale"],
-    )
+    datasets = [None, None, None]
 
-    val_dataset = get_ml_dataset(
-        pic_num,
-        dataset_json,
-        settings["width_wrt_radius"],
-        settings["im_size"],
-        settings["batch_size"],
-        norm_metadata,
-        (settings["data_dir"],
-         settings["input_dir"],
-         settings["label_dir"]),
-        start_idx=val_idx[0],
-        end_idx=val_idx[1],
-        scale=settings["scale"],
-    )
+    for idx, tup in enumerate([trn_idx, val_idx, test_idx]):
+        start_idx, end_idx = tup
 
-    test_dataset = get_ml_dataset(
-        pic_num,
-        dataset_json,
-        settings["width_wrt_radius"],
-        settings["im_size"],
-        settings["batch_size"],
-        norm_metadata,
-        (settings["data_dir"],
-         settings["input_dir"],
-         settings["label_dir"]),
-        start_idx=test_idx[0],
-        end_idx=test_idx[1],
-        scale=settings["scale"],
-    )
+        datasets[idx] = get_ml_dataset(
+            pic_num,
+            dataset_json,
+            settings["width_wrt_radius"],
+            settings["im_size"],
+            settings["batch_size"],
+            norm_metadata,
+            (settings["data_dir"],
+             settings["input_dir"],
+             settings["label_dir"]),
+            start_idx=start_idx,
+            end_idx=end_idx,
+            scale=settings["scale"],
+        )
+
+    trn_dataset = datasets[0]
+    val_dataset = datasets[1]
+    test_dataset = datasets[2]
 
     return (
         trn_dataset,
@@ -386,11 +365,4 @@ def preprocess_ml_data() -> Tuple[
 
 
 if __name__ == "__main__":
-    """
-    Copy-paste form preprocess_ml_data if desired to test this script:
-
-    Run in terminal and diagnose:
-    - python preprocess_ml_data.py
-    """
     preprocess_ml_data()
-    pass
