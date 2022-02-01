@@ -18,26 +18,26 @@ _META_DICT = Dict[str, float]
 _CIRC_INFO = List[Dict[str, str]]
 
 
-def electrode_colormap_from_predictions(
+def electrode_sol_map_from_predictions(
     input_dataset: tf.data.Dataset,
     predicted_imgs: np.array,
     norm_metadata: Tuple[int, int, int, float, int, int],
     scale: int = 10,
     grid_size: int = 1000,
 ):
-    r''' electrode_colormap_from_predictions takes an electrode (in the form of
-    an tf.data.Dataset) its predicted color output at a certain C-rate and time
+    r''' electrode_sol_map_from_predictions takes an electrode (in the form of
+    an tf.data.Dataset) its predicted SOL output at a certain C-rate and time
     step to "patch" all the particles back into whole electrode, thus returning
-    a colormap output.
+    a "State-of-Lithiation"-map output.
 
     This output could be compared to ground-truth values from COMSOL to
     investigate the performance of the Machine Learning model, or as a stand-
-    alone tool to get colormaps quicker than the Direct Numerical Solution
+    alone tool to get SOL maps quicker than the Direct Numerical Solution
     solution.
 
     Note: "input_dataset" and "predicted_imgs" should be in the same order,
-        i.e., they should not be shuffled. Otherwise, colors will not be in the
-        correct order.
+        i.e., they should not be shuffled. Otherwise, the SOL will not be in 
+        the correct order.
 
     Inputs:
     - input_dataset: tf.data.Dataset
@@ -53,7 +53,7 @@ def electrode_colormap_from_predictions(
     L, h_cell, R_norm, zoom_norm, _, _ = norm_metadata
 
     electrode = np.zeros(
-        shape=(h_cell * scale, L * scale, 3),
+        shape=(h_cell * scale, L * scale, 1),
         dtype=float,
     )
 
@@ -248,6 +248,9 @@ def _micro_data_to_tf_loader(
             idx_num,
             arr_imgs,
             tf_img_size)
+
+        input_im = tf.image.rgb_to_grayscale(input_im)
+        input_im = tf.math.divide(input_im, tf.cast(100, dtype=tf.float32))
 
         metadata = _format_metadata(
             idx_num,
