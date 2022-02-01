@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, List, Dict
 
 import numpy as np
 from scipy.ndimage import zoom
@@ -199,3 +199,46 @@ def tf_circle_mask(
     ret_im = tf.image.resize(ret_im, (tf_img_size, tf_img_size))
 
     return ret_im
+
+
+def electrode_mask_2D(
+    circles: List[Dict[str, str]],
+    L: int,
+    h_cell: int,
+    scale: int = 10,
+) -> np.array:
+    r''' `electrode_mask_2D` returns a NumPy array where `True` values indicate
+    where an electrode particle is. Circular particles are assumed.
+
+    Inputs:
+    - circles: list of dicts of {"x": , "y": , "R": } where (x, y, R) are in
+        `um`.
+    - L: length of the electrode `um`.
+    - h_cell: height/width of electrode `um`.
+    - scale: multiplicative factor to scale `electrode_mask` array.
+
+    Outputs:
+    - electrode_mask: np.array | dtype=bool
+    '''
+
+    electrode_mask = np.zeros(
+        (h_cell * scale, L * scale),
+        dtype=bool
+    )
+
+    x_lin = np.linspace(0, L * scale - 1, num=L * scale)
+    y_lin = np.linspace(0, h_cell * scale - 1, num=h_cell * scale)
+
+    xx, yy = np.meshgrid(x_lin, y_lin)
+
+    for dict in circles:
+        x = float(dict["x"])
+        y = float(dict["y"])
+        R = float(dict["R"])
+
+        in_circ = np.sqrt((xx - x * scale) ** 2
+                          + (yy - y * scale) ** 2) <= R * scale
+
+        electrode_mask[in_circ] = True
+
+    return electrode_mask
