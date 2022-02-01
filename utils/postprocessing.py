@@ -4,8 +4,47 @@ from .numerics import get_coords_in_circle, get_inscribing_meshgrid
 
 import numpy as np
 import tensorflow as tf
+import matplotlib
 
 from .image import zoom_image
+
+
+def electrode_colormap(
+    sol_map: np.array,
+    electrode_mask: np.array,
+    colormap: matplotlib.cm,
+) -> np.array:
+    r''' `electrode_colormap` takes in the predicted State-of-Lithiation values
+    over the electrode and then returns a pretty colormap np.array ready to be
+    saved as an image.
+
+    Inputs:
+    - sol_map: np.array | [h_cell, L, 1] | dtype = np.float32 [0, 1];
+        State-of-Lithiation values over the electrode particles.
+    - electrode_mask: np.array | [h_cell, L] | dtype = bool; from
+        utils.image.electrode_mask_2D
+
+    Outputs:
+    - ret_im: np.array | [h_cell, L, 3] | dtype = np.uint8 [0, 255]; the
+        colormap image in RGB channels. Ready to be saved as an image.
+    '''
+
+    Y, X, _ = sol_map.shape
+
+    ret_im = np.zeros(
+        (Y, X, 3), dtype=np.uint8,
+    )
+
+    sol = sol_map[electrode_mask]
+    sol = np.reshape(sol, sol.size)
+
+    rgb = colormap(sol)
+    rgb = rgb[..., :3]
+    rgb = (rgb * 255).astype(np.uint8)
+
+    ret_im[electrode_mask, :] = rgb
+
+    return ret_im
 
 
 def electrode_sol_map_from_predictions(
@@ -26,7 +65,7 @@ def electrode_sol_map_from_predictions(
     solution.
 
     Note: "input_dataset" and "predicted_imgs" should be in the same order,
-        i.e., they should not be shuffled. Otherwise, the SOL will not be in 
+        i.e., they should not be shuffled. Otherwise, the SOL will not be in
         the correct order.
 
     Inputs:
