@@ -9,10 +9,56 @@ import matplotlib
 from .image import zoom_image
 
 
+def electrode_mask_exceeding_absolute_SOL_error_threshold(
+    predicted_sol: np.array,
+    ground_truth_sol: np.array,
+    electrode_mask: np.array,
+    sol_threshold: float,
+    over_predict: bool = True,
+):
+    blank_im = np.zeros_like(predicted_sol, dtype=np.float32)
+
+    error = ground_truth_sol - predicted_sol
+
+    if over_predict:
+        error = error
+    else:
+        error = -error
+
+    error = np.reshape(
+        error,
+        (np.prod(predicted_sol.shape), 1),
+    )
+
+    condition = np.all(
+        error >= sol_threshold,
+        axis=-1,
+    )
+
+    # Don't want to cause weird bugs do we
+    exceed_error_mask = np.copy(electrode_mask)
+    exceed_error_mask = np.reshape(
+        exceed_error_mask,
+        (np.prod(exceed_error_mask.shape), 1),
+    )
+
+    indices = np.where(condition)
+    exceed_error_mask[:] = False
+    exceed_error_mask[indices] = True
+
+    exceed_error_mask = np.reshape(
+        exceed_error_mask,
+        blank_im.shape,
+    )
+
+    return exceed_error_mask
+
+
 def electrode_colormap(
     sol_map: np.array,
     electrode_mask: np.array,
     colormap: matplotlib.cm,
+    multiply_by_rgb: bool = True,
 ) -> np.array:
     r''' `electrode_colormap` takes in the predicted State-of-Lithiation values
     over the electrode and then returns a pretty colormap np.array ready to be
@@ -40,7 +86,8 @@ def electrode_colormap(
 
     rgb = colormap(sol)
     rgb = rgb[..., :3]
-    rgb = (rgb * 255).astype(np.uint8)
+    if multiply_by_rgb:
+        rgb = (rgb * 255).astype(np.uint8)
 
     ret_im[electrode_mask, :] = rgb
 
