@@ -27,3 +27,10 @@ def save_micro_png(
     '''
     im = Image.fromarray(micro_im.astype(np.uint8))
     im.save(fname)
+
+
+def save_numpy_arr(
+    micro_im: np.ndarray,
+    fname: str,
+):
+    np.save(fname, micro_im)

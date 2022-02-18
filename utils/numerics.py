@@ -1,7 +1,7 @@
 from typing import Tuple
 import numpy as np
 
-MESHGRID = Tuple[np.array, np.array]
+from . import typings
 
 
 def get_inscribing_meshgrid(
@@ -10,7 +10,7 @@ def get_inscribing_meshgrid(
     R: str,
     grid_size: int,
     to_um: float = 1e-6,
-) -> MESHGRID:
+) -> typings.meshgrid:
     r'''
     Inputs:
     - x: (x,) of particle center in micrometers
@@ -44,12 +44,14 @@ def get_inscribing_coords(
     bounding meshgrid around the particle of interest.
     '''
 
-    x, y, R = float(x), float(y), float(R)
+    x_float = float(x)
+    y_float = float(y)
+    R_float = float(R)
 
-    x_min = (x - R) * to_um
-    x_max = (x + R) * to_um
-    y_min = (y - R) * to_um
-    y_max = (y + R) * to_um
+    x_min = (x_float - R_float) * to_um
+    x_max = (x_float + R_float) * to_um
+    y_min = (y_float - R_float) * to_um
+    y_max = (y_float + R_float) * to_um
 
     return (x_min, x_max, y_min, y_max)
 
@@ -58,9 +60,9 @@ def get_coords_in_circle(
     x: str,
     y: str,
     R: str,
-    meshgrid: MESHGRID,
+    meshgrid: typings.meshgrid,
     to_um: float = 1e-6,
-) -> MESHGRID:
+) -> typings.meshgrid:
     r''' get_coords_in_circle determines the indexes in the meshgrid which are
     in the particle of interest. This method is used to determine which pixels
     to fill with colour.
@@ -70,9 +72,11 @@ def get_coords_in_circle(
     xx = np.copy(xx)
     yy = np.copy(yy)
 
-    x, y, R = float(x) * to_um, float(y) * to_um, float(R) * to_um
+    x_float = float(x) * to_um
+    y_float = float(y) * to_um
+    R_float = float(R) * to_um
 
-    in_circ = np.sqrt((xx - x) ** 2 + (yy - y) ** 2) <= R
+    in_circ = np.sqrt((xx - x_float) ** 2 + (yy - y_float) ** 2) <= R_float
 
     xx = xx[in_circ]
     yy = yy[in_circ]
@@ -82,7 +86,7 @@ def get_coords_in_circle(
 
 def get_electrode_meshgrid(L: int,
                            h: int,
-                           scale=10) -> MESHGRID:
+                           scale=10) -> typings.meshgrid:
     r'''
     This function takes in the geometry of the electrode being analyzed and
     returns a tuple of (xx, yy) meshgrid.

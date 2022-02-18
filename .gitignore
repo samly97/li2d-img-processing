@@ -5,7 +5,7 @@
 *.csv
 
 # Ignore JSON specified user settings
-*.json
+# *.json
 
 # Ignore MacOS files
 *.DS_STORE
@@ -18,3 +18,5 @@
 *.ipynb*
 
 *.keras
+
+_old_datasets
