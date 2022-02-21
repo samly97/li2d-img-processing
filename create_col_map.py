@@ -1,249 +1,396 @@
 import os
-from typing import List, Tuple
+from typing import Dict, List, Tuple, Callable
+
+import numpy as np
+import pandas as pd
+
+from scipy.interpolate import griddata
 
 from tqdm import tqdm
 
-import pandas as pd
-
-import numpy as np
-from scipy.interpolate import griddata
-
-from utils.encoder_colormap import colormap as encoder_cm
-
 from utils.io import load_json
-from utils.io import save_micro_png
+from utils.io import save_numpy_arr
 
 from utils.numerics import get_inscribing_meshgrid
 from utils.numerics import get_inscribing_coords
 from utils.numerics import get_coords_in_circle
 
-RGB_DIM = 3
-
-GREEN = np.array([0, 128, 0])
-
-MESHGRID = Tuple[np.array, np.array]
+from utils import typings
 
 
-def get_micro_directories() -> List[str]:
-    # Directories where the "electro_c-rate.csv" live
-    micro_dirs = os.listdir(os.getcwd())
-    # Parse out directories - i.e., no png/json/ipynb files
-    micro_dirs = [
-        file for file in micro_dirs
-        if not any(True for substr in
-                   ['.png', '.json', '.ipynb', '.DS_Store',
-                    '.git', '.gitignore', '.py', '_*']
-                   if substr in file)
-    ]
+class COMSOL_Electrochem_CSV():
 
-    micro_dirs.sort()
-    micro_dirs = [os.path.join(os.getcwd(), dirr) for dirr in micro_dirs]
+    def __init__(
+            self,
+            format_fn=lambda c_rate: "electro_%s.csv" % (c_rate),
+            **kwargs):
 
-    return micro_dirs
+        # Settings
+        self.header_row: int = kwargs.get("header_row", 8)
+        self.data_start_column: int = kwargs.get("data_start_column", 2)
 
+        # Useful functions
+        self.format_filename: Callable[[str], str] = format_fn
 
-def get_electrochem_csv(c_rate: str) -> str:
-    # Formats the electrochem filename
-    fname = "electro_%s.csv" % (c_rate)
-    return fname
-
-
-def read_csv_into_pandas(
+    def read_csv_into_pandas(
+        self,
         micro_path: str,
         c_rate: str,
-        header_row: int) -> pd.DataFrame:
-    # For a specific:
-    # - microstructure
-    # - c-rate
+    ) -> pd.DataFrame:
+        c_rate_csv = self.format_filename(c_rate)
+        file_path = os.path.join(
+            micro_path,
+            c_rate_csv
+        )
 
-    # Get the electrochem file
-    c_rate_csv = get_electrochem_csv(c_rate)
-    file_path = os.path.join(micro_path, c_rate_csv)
+        dataframe = pd.read_csv(
+            file_path,
+            header=self.header_row,
+        )
 
-    dataframe = pd.read_csv(file_path, header=header_row)
+        # Drop all NaN values from table
+        dataframe = dataframe.dropna()
 
-    # Drop all NaN values from table
-    dataframe = dataframe.dropna()
+        # Normalize State-of-Lithiation to 0-1 scale
+        dataframe.iloc[
+            :,
+            self.data_start_column:,
+        ] = dataframe.iloc[:, self.data_start_column:] / 100
 
-    # Normalize State-of-Lithiation to 0 -1 scale
-    dataframe.iloc[:, 2:] = dataframe.iloc[:, 2:] / 100
+        return dataframe
 
-    return dataframe
-
-
-def get_colored_vertices(
-        df: pd.DataFrame,
-        xy_col: Tuple[pd.DataFrame, pd.DataFrame],
-        scale: int) -> Tuple[np.array, np.array]:
-    # get_colored_vertices returns a X and Y vector for values that
-    # are associated with a SoL value from COMSOL
-    #
-    # We use these to interpolate
-    #
-    # In pixel and not micrometer scale
-
-    _to_pix = 1e6 * scale
-
-    X_col, Y_col = xy_col
-
-    X = df[X_col].to_numpy()
-    Y = df[Y_col].to_numpy()
-
-    # Converting from micrometers to pixel
-    X = np.ceil(X * _to_pix).astype(np.int64) - 1
-    Y = np.ceil(Y * _to_pix).astype(np.int64) - 1
-
-    return (X, Y)
+    def get_timestep(
+            self,
+            df: pd.DataFrame,
+            column: int) -> str:
+        # Get the timestep, t, from the column header
+        time = df.columns[column].split(" ")
+        time = time[-1].split("=")[-1]
+        return time
 
 
-def _get_timestep(df: pd.DataFrame, col: int) -> str:
-    # Get the timestep, t, from the column header
-    time = df.columns[col].split(" ")
-    time = time[-1].split("=")[-1]
-    return time
+class Experiment():
+
+    m_to_um: float = 1e6
+
+    def __init__(
+            self,
+            c_rate: str,
+            dataframe: pd.DataFrame,
+            scale: int = 10,
+    ):
+
+        self.c_rate = c_rate
+        self.df = dataframe
+
+        self.x_col, self.y_col = self._set_xy_cols()
+        self.X, self.Y = self._get_comsol_nodes(scale)
+
+    def _get_comsol_nodes(self, scale: int):
+        r''' _get_comsol_nodes returns a X and Y vector for values that are
+        associated with a State-of-Lithiation value from COMSOL. We use these
+        values to interpolate.
+        '''
+
+        # In "pixel scale"
+        to_pix = self.m_to_um * scale
+
+        X = self.df[self.x_col].to_numpy()
+        Y = self.df[self.y_col].to_numpy()
+
+        # Converting from micrometers to pixel
+        X = np.ceil(X * to_pix).astype(np.int64) - 1
+        Y = np.ceil(Y * to_pix).astype(np.int64) - 1
+
+        return (X, Y)
+
+    def _set_xy_cols(
+        self,
+        x_col_idx: int = 0,
+        y_col_idx: int = 1,
+    ):
+        x_col = self.df.columns[x_col_idx]
+        y_col = self.df.columns[y_col_idx]
+        return (x_col, y_col)
 
 
-def create_colormap_image(
-        df: pd.DataFrame,
-        colormap: encoder_cm,
-        circles: list[dict[str]],
-        time_col: int,
-        xy_col: Tuple[pd.DataFrame, pd.DataFrame],
-        XY_vertices: Tuple[np.array, np.array],
-        h_cell: int,
+class Microstructure():
+
+    m_to_um: float = 1e6
+
+    def __init__(
+        self,
+        csv_formatter: COMSOL_Electrochem_CSV,
+        micro_path: str,
         L: int,
-        grid_size,
-        scale: int) -> np.array:
-    # create_colormap_image collates everything into one
+        h_cell: int,
+        c_rates: List[str],
+        particles: List[typings.Circle_Info],
+        grid_size: int = 1000,
+        scale: int = 10,
+    ):
+        self.csv_formatter = csv_formatter
 
-    # Create blank image to house SoL data from CSV files
-    im = np.zeros((h_cell * scale, L * scale, RGB_DIM))
+        self.micro_path = micro_path
 
-    # Header names of the (x, y) columns in Pandas DataFrame
-    X_col, Y_col = xy_col
-    # Coordinates already associated with colour (pixel-scale)
-    X, Y = XY_vertices
+        self.L = L
+        self.h_cell = h_cell
+        self.c_rates = c_rates
 
-    # Get SoL associated with (X, Y)
-    avail_sol = df.iloc[:, time_col].to_numpy()
+        self.particles = particles
 
-    # Setting precolored locations
-    im[Y, X, :] = colormap(avail_sol)
+        self.grid_size = grid_size
+        self.scale = scale
 
-    for idx in tqdm(range(len(circles))):
-        circle = circles[idx]
+        if self.c_rates is None or len(self.c_rates) == 0:
+            raise ValueError(
+                "c-rates should be a list of discharges, but got %s",
+                self.c_rates,
+            )
 
-        # Get interpolated coordinates and values
-        x_inter, y_inter, sol_inter = interpolate_circle_color(
-            circle,
-            time_col,
+        if self.particles is None or len(self.particles) == 0:
+            raise ValueError(
+                "Microstructure be a list of particles, but got %s",
+                self.particles,
+            )
+
+        self.experiments: Dict[str, Experiment] = self._get_experiments()
+
+    def __str__(self):
+        return (
+            'Electrode Length (um): %d\n' +
+            'Electrode Width  (um): %d\n' +
+            'C-rates: %s\n' +
+            'Number of particles: %d\n'
+        ) % (self.L, self.h_cell, self.c_rates, len(self.particles))
+
+    def _get_experiments(self) -> Dict[str, Experiment]:
+        experiments = {}
+
+        for c_rate in self.c_rates:
+            dataframe = self.csv_formatter.read_csv_into_pandas(
+                self.micro_path,
+                c_rate
+            )
+            exp = Experiment(
+                c_rate,
+                dataframe,
+                scale=self.scale,
+            )
+            experiments[c_rate] = exp
+
+        return experiments
+
+    def create_and_save_all_colormaps_from_experiments(
+        self,
+        fname_fn: Callable[[str, str], str],
+    ) -> None:
+        for c_rate in self.experiments.keys():
+            dataframe = self.experiments[c_rate].df
+            _, num_columns = dataframe.shape
+
+            time_start = self.csv_formatter.data_start_column
+
+            for time_column in tqdm(range(time_start, num_columns)):
+                # Get the timestep from the column header
+                time = self.csv_formatter.get_timestep(
+                    dataframe,
+                    time_column,
+                )
+
+                # Get the solmap array
+                im = self.create_solmap_image(
+                    c_rate,
+                    time_column,
+                )
+
+                output_dir = os.path.join(
+                    self.micro_path, "col/"
+                )
+
+                try:
+                    os.mkdir(output_dir)
+                except FileExistsError:
+                    pass
+
+                filename = fname_fn(c_rate, time)
+                filename = os.path.join(output_dir, filename)
+                save_numpy_arr(im, filename)
+
+    def create_solmap_image(
+        self,
+        c_rate: str,
+        time_column: int,
+    ) -> np.ndarray:
+        if c_rate not in self.experiments:
+            raise KeyError(
+                "Provided discharge c-rate {} is not in ".format(c_rate) +
+                "the list of experiments"
+            )
+
+        # Which discharge we're on
+        experiment = self.experiments[c_rate]
+
+        df = experiment.df
+        _, num_columns = df.shape
+
+        if time_column >= num_columns:
+            raise IndexError(
+                "Time column ({}) provided exceeds ".format(time_column) +
+                "columns stored in dataframe ({})".format(num_columns)
+            )
+
+        # Create a blank array to house State-of-Lithiation data from CSV files
+        im = np.zeros((
+            self.h_cell * self.scale,
+            self.L * self.scale,
+            1))
+
+        # Get SoL values located on mesh vertices from COMSOL. We will do an
+        # interpolation using these values.
+        avail_sol = df.iloc[:, time_column].to_numpy()
+
+        im[
+            experiment.Y,
+            experiment.X,
+            :,
+        ] = avail_sol.reshape((avail_sol.size, 1))
+
+        for idx in tqdm(range(len(self.particles))):
+            circle = self.particles[idx]
+
+            # Get interpolated coordinates and values
+            (
+                x_inter,
+                y_inter,
+                sol_inter
+            ) = self.interpolate_circle_sol(
+                circle,
+                time_column,
+                df,
+                experiment.x_col,
+                experiment.y_col,
+            )
+
+            # Fill in interpolated SoL values
+            im[
+                y_inter,
+                x_inter,
+                :
+            ] = sol_inter.reshape((sol_inter.size, 1))
+
+        return im
+
+    def interpolate_circle_sol(
+            self,
+            circle: typings.Circle_Info,
+            time_column: int,
+            df: pd.DataFrame,
+            x_df_column: pd.DataFrame,
+            y_df_column: pd.DataFrame,
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        r''' Interpolates the State-of-Lithiation using the values returned in
+        the COMSOL vertices.
+        '''
+
+        to_pix = self.m_to_um * self.scale
+
+        x, y, R = circle["x"], circle["y"], circle["R"]
+
+        xx, yy = get_inscribing_meshgrid(x, y, R, self.grid_size)
+        xx, yy = get_coords_in_circle(x, y, R, (xx, yy))
+
+        # (x, y) values within the circle with values to interpolate from
+        (
+            x_vertices,
+            y_vertices,
+            SoL_vertices,
+        ) = self._get_filled_vertices(
             df,
-            (X_col, Y_col),
-            grid_size,
-            scale)
+            time_column,
+            x, y, R,
+            x_df_column,
+            y_df_column,
+        )
 
-        # Fill in color
-        im[y_inter, x_inter, :] = colormap(sol_inter)
+        interpolant_coords = np.array([x_vertices, y_vertices])
+        interpolant_coords = interpolant_coords.T
 
-    return im
+        # Interpolate missing values
+        # COMSOL uses linear interpolation; citation "..."
+        SoL_mesh = griddata(
+            interpolant_coords,
+            SoL_vertices,
+            (xx, yy),
+            method='linear'
+        )
 
+        x_inter, y_inter, sol_inter = self._drop_nan_from_interpolate(
+            x_df_column,
+            y_df_column,
+            (xx, yy),
+            SoL_mesh,
+        )
 
-def interpolate_circle_color(
-        circle: dict[str],
-        time_col: int,
+        # Convert from micrometer- to pixel_scale
+        x_inter = np.ceil(x_inter * to_pix).astype(np.int64) - 1
+        y_inter = np.ceil(y_inter * to_pix).astype(np.int64) - 1
+
+        # return (xx, yy, SoL_mesh)
+        return (x_inter, y_inter, sol_inter)
+
+    def _get_filled_vertices(
+        self,
         df: pd.DataFrame,
-        xy_col: Tuple[pd.DataFrame, pd.DataFrame],
-        grid_size: int,
-        scale: int) -> Tuple[np.array, np.array, np.array]:
-    # Interpolates the State-of-Lithiation, which is represented by the
-    # color, using the available SoL values as per the COMSOL vertices.
-
-    _to_pix = 1e6 * scale
-
-    x, y, R = circle["x"], circle["y"], circle["R"]
-
-    xx, yy = get_inscribing_meshgrid(x, y, R, grid_size)
-    xx, yy = get_coords_in_circle(x, y, R, (xx, yy))
-
-    # (x, y) values within the circle with values to interpolate from
-    (
-        x_vertices,
-        y_vertices,
-        SoL_vertices,
-    ) = _get_filled_vertices(df,
-                             time_col,
-                             x, y, R,
-                             xy_col)
-
-    interpolant_coords = np.array([x_vertices, y_vertices])
-    interpolant_coords = interpolant_coords.T
-
-    # Interpolate missing values
-    # COMSOL uses linear interpolation; citation: "..."
-    SoL_mesh = griddata(interpolant_coords,
-                        SoL_vertices,
-                        (xx, yy),
-                        method='linear')
-
-    x_inter, y_inter, sol_inter = _drop_nan_from_interpolate(xy_col,
-                                                             (xx, yy),
-                                                             SoL_mesh)
-
-    # Convert from micrometer- to pixel-scale
-    x_inter = np.ceil(x_inter * _to_pix).astype(np.int64) - 1
-    y_inter = np.ceil(y_inter * _to_pix).astype(np.int64) - 1
-
-    # return (xx, yy, SoL_mesh)
-    return (x_inter, y_inter, sol_inter)
-
-
-def _drop_nan_from_interpolate(
-        xy_col: Tuple[pd.DataFrame, pd.DataFrame],
-        meshgrid: MESHGRID,
-        SoL_interpolated: MESHGRID) -> Tuple[np.array, np.array, np.array]:
-    # This drops all NaNs in the same location
-
-    X_col, Y_col = xy_col
-    xx, yy = meshgrid
-
-    to_drop_df = pd.DataFrame({
-        X_col: xx,
-        Y_col: yy,
-        "temp": SoL_interpolated,
-    })
-
-    to_drop_df = to_drop_df.dropna()
-
-    x_filt = to_drop_df[X_col].to_numpy()
-    y_filt = to_drop_df[Y_col].to_numpy()
-    sol_filt = to_drop_df.iloc[:, 2].to_numpy()
-
-    return (x_filt, y_filt, sol_filt)
-
-
-def _get_filled_vertices(
-        df: pd.DataFrame,
-        time_col: int,
+        time_column: int,
         x: str,
         y: str,
         R: str,
-        xy_col: Tuple[pd.DataFrame, pd.DataFrame]) -> Tuple[np.array,
-                                                            np.array,
-                                                            np.array]:
-    # Vertices which already has color
+        x_df_column: pd.DataFrame,
+        y_df_column: pd.DataFrame,
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
 
-    X_col, Y_col = xy_col
-    x_min, x_max, y_min, y_max = get_inscribing_coords(x, y, R)
+        # Vertices returned from COMSOL
+        x_min, x_max, y_min, y_max = get_inscribing_coords(x, y, R)
 
-    filtered_by_x = df[df[X_col].between(x_min, x_max)]
-    filtered_by_y = filtered_by_x[filtered_by_x[Y_col].between(y_min, y_max)]
+        filtered_by_x = df[df[x_df_column].between(x_min, x_max)]
+        filtered_by_y = filtered_by_x[
+            filtered_by_x[y_df_column].between(y_min, y_max)
+        ]
 
-    # Prefilled coordinates for the current circle
-    x_vertices = filtered_by_y[X_col].to_numpy()
-    y_vertices = filtered_by_y[Y_col].to_numpy()
-    SoL_vertices = filtered_by_y.iloc[:, time_col].to_numpy()
+        # Prefilled coordinates for the current circle
+        x_vertices = filtered_by_y[x_df_column].to_numpy()
+        y_vertices = filtered_by_y[y_df_column].to_numpy()
+        SoL_vertices = filtered_by_y.iloc[
+            :,
+            time_column,
+        ].to_numpy()
 
-    return (x_vertices, y_vertices, SoL_vertices)
+        return (x_vertices, y_vertices, SoL_vertices)
+
+    def _drop_nan_from_interpolate(
+        self,
+        x_df_column: pd.DataFrame,
+        y_df_column: pd.DataFrame,
+        meshgrid: typings.meshgrid,
+        SoL_interpolated: typings.meshgrid
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        # This drops all NaNs in the same location
+        xx, yy = meshgrid
+
+        to_drop_df = pd.DataFrame({
+            x_df_column: xx,
+            y_df_column: yy,
+            "temp": SoL_interpolated,
+        })
+
+        to_drop_df = to_drop_df.dropna()
+
+        x_filt = to_drop_df[x_df_column].to_numpy()
+        y_filt = to_drop_df[y_df_column].to_numpy()
+        sol_filt = to_drop_df.iloc[:, 2].to_numpy()
+
+        return (x_filt, y_filt, sol_filt)
 
 
 if __name__ == "__main__":
@@ -256,60 +403,25 @@ if __name__ == "__main__":
     grid_size = settings["grid_size"]
     scale = settings["scale"]
 
-    micro_dirs = get_micro_directories()
-    microstructures = load_json("metadata.json")
+    to_parse_out = settings["substrings_to_parse_out"]
 
-    # COLOR MAP
-    col_map = encoder_cm()
+    # Handles all things electrochem csv!
+    echem_csv_handler = COMSOL_Electrochem_CSV()
+    microstructure_data: List[typings.Microstructure_Data] = load_json(
+        "metadata.json")
 
-    for idx, micro in tqdm(enumerate(microstructures)):
-        # Get the path to the microstructure for file read/write
-        micro_path = micro_dirs[idx]
+    for idx, data in enumerate(microstructure_data):
+        micro = Microstructure(
+            echem_csv_handler,
+            micro_path=str(idx + 1),
+            L=L,
+            h_cell=h_cell,
+            c_rates=c_rates,
+            particles=data["circles"],
+            grid_size=grid_size,
+            scale=scale,
+        )
 
-        for c_rate_exp in c_rates:
-            # Helpful print statement to indicate progress
-            print(("Microstructure: %d C-rate: %s") % (idx + 1, c_rate_exp))
-
-            dataframe = read_csv_into_pandas(
-                micro_path,
-                c_rate_exp,
-                settings["header_row"])
-
-            X_col = dataframe.columns[0]
-            Y_col = dataframe.columns[1]
-
-            X, Y = get_colored_vertices(
-                dataframe,
-                (X_col, Y_col),
-                scale)
-
-            # Get number of columns... 2 - NUM_COLUMN is num of time steps
-            _, NUM_COL = dataframe.shape
-
-            for t in tqdm(range(2, NUM_COL)):
-
-                # Get the timestep from the column header
-                time = _get_timestep(dataframe, t)
-
-                # Get colormap image
-                im = create_colormap_image(
-                    dataframe,
-                    col_map,
-                    micro["circles"],
-                    t,
-                    (X_col, Y_col),
-                    (X, Y),
-                    h_cell,
-                    L,
-                    grid_size,
-                    scale)
-
-                output_dir = os.path.join(micro_path, "col/")
-                try:
-                    os.mkdir(output_dir)
-                except FileExistsError:
-                    pass
-
-                filename = "c%s_t%s.png" % (c_rate_exp, time)
-                filename = os.path.join(output_dir, filename)
-                save_micro_png(im, filename)
+        micro.create_and_save_all_colormaps_from_experiments(
+            lambda c_rate, time: "c%s_t%s.npy" % (c_rate, time)
+        )

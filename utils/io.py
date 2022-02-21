@@ -20,7 +20,7 @@ def load_json(
 
 
 def save_micro_png(
-    micro_im: np.array,
+    micro_im: np.ndarray,
     fname: str,
 ):
     r''' Values to save_micro_png should be [0, 255] for consistency.
