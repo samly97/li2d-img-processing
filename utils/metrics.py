@@ -2,8 +2,9 @@ import numpy as np
 
 
 def measure_porosity(
-        micro_im: np.array,
-        pore_color: np.array,
+        micro_im: np.ndarray,
+        pore_encoding: np.ndarray,
+        padding_encoding: np.ndarray,
 ) -> float:
     r''' measure_porosity measures the porosity of the extracted images used in
         the machine learning model. These images are different from the
@@ -17,14 +18,12 @@ def measure_porosity(
         - porosity: float
     '''
 
-    _black = np.array([0, 0, 0])
-
     Y, X, _ = micro_im.shape
 
-    padding = np.all(micro_im == _black, axis=-1)
+    padding = np.all(micro_im == padding_encoding, axis=-1)
     padding = np.sum(padding)
 
-    pore_space = np.all(micro_im == pore_color, axis=-1)
+    pore_space = np.all(micro_im == pore_encoding, axis=-1)
     pore_space = np.sum(pore_space)
 
     electrode_domain = float(Y * X - padding)
