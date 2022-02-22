@@ -15,3 +15,15 @@ class Microstructure_Data(TypedDict):
     porosity: str
     tortuosity: str
     circles: List[Circle_Info]
+
+
+class Metadata(TypedDict):
+    micro: str
+    x: str
+    y: str
+    R: str
+    zoom_factor: float
+    c_rate: str
+    time: str
+    dist_from_sep: float
+    porosity: float
