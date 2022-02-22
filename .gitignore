@@ -1,11 +1,13 @@
 # Ignore script-generated PNG files
 *.png
+*.npy
+*.xlsx
 
 # Ignore COMSOL-generated electrochem csv files
 *.csv
 
 # Ignore JSON specified user settings
-# *.json
+*.json
 
 # Ignore MacOS files
 *.DS_STORE

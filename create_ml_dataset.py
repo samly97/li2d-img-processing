@@ -147,9 +147,7 @@ class Microstructure_Breaker_Upper():
     ) -> Tuple[int, Dict[str, typings.Metadata]]:
         ret_dict: Dict[str, typings.Metadata] = {}
 
-        for solmap in tqdm(self.sol_maps[23:24]):
-            print(solmap)
-
+        for solmap in tqdm(self.sol_maps):
             for particle in self.particles:
                 input_im, label_im, metadata = self.ml_data_from_particles(
                     particle,
@@ -205,8 +203,8 @@ class Microstructure_Breaker_Upper():
             np.array(self.padding_encoding),
         )
 
-        input_im, zoom_factor = zoom_image(input_im, output_img_size)
-        label_im, _ = zoom_image(label_im, output_img_size)
+        input_im, zoom_factor = zoom_image(input_im, output_img_size, order=0)
+        label_im, _ = zoom_image(label_im, output_img_size, order=0)
 
         metadata: typings.Metadata = {
             "micro": self.micro_num,
@@ -316,7 +314,7 @@ if __name__ == "__main__":
 
     pic_num = 1
 
-    for idx, data in enumerate(microstructure_data[0:1]):
+    for idx, data in enumerate(microstructure_data):
         micro = Microstructure_Breaker_Upper(
             micro_num=str(idx + 1),
             solmap_path=os.path.join(
