@@ -1,44 +1,26 @@
 import os
-from typing import Tuple, List
+from typing import Dict, List, Tuple
+
 from tqdm import tqdm
 import json
+
 import numpy as np
 from math import ceil
-from skimage import io
 
 from utils.io import load_json
-from utils.io import save_micro_png
+from utils.io import save_numpy_arr
 from utils.numerics import get_electrode_meshgrid
+from utils.image import extract_input
 from utils.image import zoom_image
-from utils.image import pad_image
-from utils.image import padded_coords
 from utils.metrics import measure_porosity
 
-####################################
-# CREATE MACHINE LEARNING DATASET ##
-####################################
-
-# TODO:
-# - ACTIVATIONS: seperate geometry from concentration prediction ✅
-# - LOCAL porosity ✅
-# - There are some "bleeding" edge effects from the colors not interpolating
-#   the colors completely. Will need to decide what to do. Could decide to
-#   interpolate the edges or we could use the difference between the circles
-#   and the generated color and just fill it in with the background.
-# - incorporate BOUNDING_BOX parameterization ✅
-# - zoom ratios ✅
+from utils import typings
 
 
-GREEN = np.array([0, 128, 0])
-TEAL = np.array([0, 128, 128])
-
-# Custom typings
-MESHGRID = Tuple[np.array, np.array]
-
-
-def create_output_dirs(input_dir: str,
-                       label_dir: str) -> Tuple[str, str, str]:
-
+def create_output_dirs(
+    input_dir: str,
+    label_dir: str,
+) -> Tuple[str, str, str]:
     curr_dir = os.getcwd()
     dataset_dir = os.path.join(curr_dir, "dataset")
     input_image_dir = os.path.join(dataset_dir, input_dir)
@@ -53,278 +35,316 @@ def create_output_dirs(input_dir: str,
             label_image_dir)
 
 
-def _create_dir(dir: str):
+def _create_dir(dir: str) -> None:
     try:
         os.mkdir(dir)
     except FileExistsError:
         pass
 
 
-def get_exp_params(colmap_fname: str) -> Tuple[str, str]:
-    r'''
-    Retrieves the simulated C-rate and timestep from the filename.
+class SOLmap():
 
-    Returns: (c_rate, time)
-    '''
+    def __init__(self, filepath: str):
+        tup = self._get_exp_params(filepath)
+        self.c_rate = tup[0]
+        self.time = tup[1]
+        self.solmap_arr = np.load(filepath)
 
-    # Remove the full path, only the filename in form of:
-    # - c(c-rate)_t(time).png
-    colmap_fname = colmap_fname.split('/')[-1]
+    def __str__(self):
+        return (
+            "C-rate: %s\nTime (s): %s\n" % (self.c_rate, self.time)
+        )
 
-    temp = colmap_fname.split('.png')
-    temp = temp[0]
-    temp = temp.split('_t')
+    def _get_exp_params(
+        self,
+        colmap_filepath: str
+    ) -> Tuple[str, str]:
+        r'''
+        Returns: (c_rate, time)
+        '''
+        # Remove the full path, only the filename in the form of:
+        # - c(c-rate)_t(time).png
+        delimited = colmap_filepath.split('/')
 
-    # Get C-rate
-    temp1 = temp[0]
-    c_rate = temp1[1:]
+        colmap_fname = delimited[-1]
+        colmap_fname_split = colmap_fname.split('.npy')
+        fname_scheme = colmap_fname_split[0]
+        temp = fname_scheme.split('_t')
 
-    # Get timestep
-    time = temp[1]
+        # Get C-rate
+        temp1 = temp[0]
+        c_rate = temp1[1:]
 
-    return (c_rate, time)
+        # Get timestep
+        time = temp[1]
 
-
-def get_micro_colmaps(microstructure: int) -> List[str]:
-    r'''
-    Takes the microstructure being analyzed and being called in the
-    same directory where the colour images are being generated. That is,
-    being called in the directory where microstructures: 1, 2, 3, etc.; are
-    children directories.
-
-    Returns a list of filenames corresponding to the generated colormap images.
-    '''
-    curr_dir = os.getcwd()
-
-    cm_dir = os.path.join(curr_dir, str(microstructure), "col")
-    files = os.listdir(cm_dir)
-    colmaps = [os.path.join(cm_dir, colmap) for colmap in files]
-    return colmaps
+        return (c_rate, time)
 
 
-def generate_ml_dataset(
-        cell_params: Tuple[int, int],
-        settings: Tuple[int, int, int],
-        directories: Tuple[str, str, str],
-        microstructures,
-):
-    r'''
-    generate_ml_dataset is the top-level function extract the input and target
-    images used for training the Machine Learning model. The JSON metadata will
-    be generated here as well.
-    '''
+class Microstructure_Breaker_Upper():
+    # Seems like we could extend the `Microstructure` class from the
+    # `create_col_map.py` file... I could see how there's similarities... food
+    # for thought.
+    def __init__(
+        self,
+        micro_num: str,
+        solmap_path: str,
+        micro_arr: np.ndarray,
+        L: int,
+        h_cell: int,
+        particles: List[typings.Circle_Info],
+        sol_max: int,
+        pore_encoding: int,
+        padding_encoding: int,
+        scale: int = 10,
+    ):
+        self.micro_num = micro_num
+        self.solmap_path = solmap_path
 
-    L, h_cell = cell_params
-    scale, output_img_size, width_wrt_radius = settings
-    dataset_dir, input_dir, label_dir = directories
+        # Electrode properties
+        self.L = L
+        self.h_cell = h_cell
+        self.particles = particles
 
-    meshgrid = get_electrode_meshgrid(L, h_cell, scale)
+        # User settings
+        self.sol_max = sol_max
+        self.pore_encoding = pore_encoding
+        self.padding_encoding = padding_encoding
+        self.scale = scale
 
-    # Dictionary to write output to
-    dataset_json = {}
+        if self.particles is None or len(self.particles) == 0:
+            raise ValueError(
+                "Microstructure be a list of particles, but got %s",
+                self.particles,
+            )
 
-    # Variable to store current image
-    pic_num = 1
+        # Derived quantities
+        self.micro_arr = micro_arr
+        self.meshgrid = get_electrode_meshgrid(L, h_cell, scale)
+        self.sol_maps = self._get_solmaps()
 
-    # For each microstructure, e.g. micros [1, 2, 3, 4, 5]
-    for idx in tqdm(range(1, len(microstructures) + 1)):
-        micro_im = io.imread("micro_" + str(idx) + ".png")
+    def _get_solmaps(self) -> List[SOLmap]:
+        cm_dir = os.path.join(self.solmap_path, "col")
+        # Assumes only colormap images in this directory
+        files = os.listdir(cm_dir)
+        files.sort()
 
-        # Get all colormaps associated with microstructure "i"
-        cm_filenames = get_micro_colmaps(idx)
+        solmaps = [
+            SOLmap(
+                os.path.join(cm_dir, solmap)
+            ) for solmap in files
+        ]
 
-        circles = micro_data[idx - 1]["circles"]
+        return solmaps
 
-        for colormap in tqdm(cm_filenames):
-            cm_image = io.imread(colormap)
+    def ml_data_from_all_solmaps(
+        self,
+        width_wrt_radius: int,
+        output_img_size: int,
+        input_dir: str,
+        label_dir: str,
+        pic_num: int,
+    ) -> Tuple[int, Dict[str, typings.Metadata]]:
+        ret_dict: Dict[str, typings.Metadata] = {}
 
-            # Get the experimental params from filename
-            c_rate, time = get_exp_params(colormap)
+        for solmap in tqdm(self.sol_maps[23:24]):
+            print(solmap)
 
-            for particle in circles:
-                x = particle['x']
-                y = particle['y']
-                R = particle['R']
-
-                # Size image according to radius factor
-                box_radius = ceil(float(R) * scale * width_wrt_radius)
-
-                input_im, label_im = extract_input_and_cmap_im(
-                    box_radius,
-                    micro_im,
-                    cm_image,
-                    (x, y, R),
-                    meshgrid,
-                    scale)
-
-                # Measure local porosity
-                porosity = measure_porosity(
-                    input_im,
-                    GREEN,
+            for particle in self.particles:
+                input_im, label_im, metadata = self.ml_data_from_particles(
+                    particle,
+                    solmap,
+                    width_wrt_radius,
+                    output_img_size,
                 )
 
-                input_im, zoom_factor = zoom_image(input_im, output_img_size)
-                label_im, _ = zoom_image(label_im, output_img_size)
+                # Insert metadata
+                ret_dict[pic_num] = metadata
 
                 # Save input image
                 input_fname = os.path.join(
                     input_dir,
-                    str(pic_num) + ".png")
-                save_micro_png(input_im, input_fname)
+                    str(pic_num) + ".npy",
+                )
+                save_numpy_arr(input_im, input_fname)
 
                 # Save label image
                 label_fname = os.path.join(
                     label_dir,
-                    str(pic_num) + ".png")
-                save_micro_png(label_im, label_fname)
+                    str(pic_num) + ".npy",
+                )
+                save_numpy_arr(label_im, label_fname)
 
-                # Write metadata to JSON
-                dataset_json[pic_num] = {
-                    "micro": idx,
-                    "x": x,
-                    "y": y,
-                    "R": R,
-                    "zoom_factor": zoom_factor,
-                    "c-rate": c_rate,
-                    "time": time,
-                    "dist_from_sep": float(x)/L,
-                    "porosity": porosity,
-                }
-
-                # Update picture number
+                # Enumerate index
                 pic_num += 1
 
-    # Save JSON data
-    dataset_json_fname = os.path.join(dataset_dir, "dataset.json")
+        return pic_num, ret_dict
 
-    with open(dataset_json_fname, 'w') as outfile:
-        json.dump(dataset_json, outfile, indent=4)
+    def ml_data_from_particles(
+        self,
+        particle: typings.Circle_Info,
+        solmap: SOLmap,
+        width_wrt_radius: int,
+        output_img_size: int,
+    ) -> Tuple[np.ndarray, np.ndarray, typings.Metadata]:
+        R = particle["R"]
+        # Size image according to radius factor
+        box_radius = ceil(float(R) * self.scale * width_wrt_radius)
 
+        input_im, label_im = self.extract_input_and_cmap_im(
+            box_radius,
+            solmap,
+            particle,
+        )
+        label_im = self.scale_sol(label_im)
 
-def extract_input_and_cmap_im(box_radius: int,
-                              micro_im: np.array,
-                              colmap_im: np.array,
-                              circle: Tuple[str, str, str],
-                              mesh: MESHGRID,
-                              scale: int) -> Tuple[np.array, np.array]:
-    r'''
-    Gets both the input (blank) and labelled (with color) images
-    to form machine learning data.
+        # Measure local porosity
+        porosity = measure_porosity(
+            input_im,
+            np.array(self.pore_encoding),
+            np.array(self.padding_encoding),
+        )
 
-    Returns: (input_im, labelled_im)
-    '''
+        input_im, zoom_factor = zoom_image(input_im, output_img_size)
+        label_im, _ = zoom_image(label_im, output_img_size)
 
-    x, y, R = circle
-    xx, yy = mesh
+        metadata: typings.Metadata = {
+            "micro": self.micro_num,
+            "x": particle["x"],
+            "y": particle["y"],
+            "R": particle["R"],
+            "zoom_factor": zoom_factor,
+            "c_rate": solmap.c_rate,
+            "time": solmap.time,
+            "dist_from_sep": float(particle["x"])/self.L,
+            "porosity": porosity,
+        }
 
-    # Microstructure image with color in circle of analysis
-    with_color = _get_color_circle(
-        colmap_im,
-        (x, y, R),
-        (xx, yy))
-    # Apply the particle with color to the microstructure image
-    with_color = _add_color_to_background(micro_im, with_color)
+        return input_im, label_im, metadata
 
-    padded_with_color = pad_image(with_color, box_radius)
-    padded_micro = pad_image(micro_im, box_radius)
+    def extract_input_and_cmap_im(
+        self,
+        box_radius: int,
+        solmap: SOLmap,
+        particle: typings.Circle_Info,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        r''' Gets both the input (blank) and labelled (with color) images to
+        form machine learning data.
 
-    # New coordinates for (x, y) after padding
-    x_new, y_new = padded_coords(
-        x,
-        y,
-        box_radius,
-        scale)
+        Returns: (input_im, labelled_im)
+        '''
+        micro_im = np.copy(self.micro_arr)
+        sol_values = self._get_sol_circle(
+            solmap,
+            particle,
+        )
 
-    # Extract the "blank" microstructure image and image with particle with
-    # color
-    input_im = padded_micro[
-        y_new - box_radius: y_new + box_radius - 1,
-        x_new - box_radius: x_new + box_radius - 1,
-        :
-    ]
-    label_im = padded_with_color[
-        y_new - box_radius: y_new + box_radius - 1,
-        x_new - box_radius: x_new + box_radius - 1,
-        :
-    ]
+        input_im = extract_input(
+            box_radius,
+            micro_im,
+            (particle['x'], particle['y'], ""),
+            self.scale,
+            self.padding_encoding,
+        )
+        label_im = extract_input(
+            box_radius,
+            sol_values,
+            (particle['x'], particle['y'], ""),
+            self.scale,
+            padding=0,
+        )
 
-    return input_im, label_im
+        return input_im, label_im
 
+    def scale_sol(
+        self,
+        label_im: np.ndarray
+    ) -> np.ndarray:
+        solid_phase = np.array(np.where(
+            np.all(label_im != 0, axis=-1),
+        ))
+        ret_im = np.zeros_like(label_im, dtype=np.uint16)
+        ret_im[solid_phase, :] = np.floor(
+            label_im[solid_phase, :] * self.sol_max,
+        )
+        return ret_im
 
-def _get_color_circle(
-        col_map: np.array,
-        circle: Tuple[str, str, str],
-        mesh: MESHGRID) -> np.array:
-    r''' Retrieves the circle from the colormap based on (x, y, R) from
-    the COMSOL generated metadata file. "scale" was used to create the
-    colormap.
-    '''
+    def _get_sol_circle(
+        self,
+        solmap: SOLmap,
+        particle: typings.Circle_Info,
+    ) -> np.ndarray:
+        ret_im = np.copy(solmap.solmap_arr)
+        xx, yy = self.meshgrid
 
-    col_map = np.copy(col_map)
+        x = float(particle["x"])
+        y = float(particle["y"])
+        r = float(particle["R"])
 
-    x, y, r = circle
-    xx, yy = mesh
+        # Boolean array where "True" is a pixel inside the circle of analysis
+        in_circ = np.sqrt((xx - x) ** 2 + (yy - y) ** 2) <= r
 
-    x = float(x)
-    y = float(y)
-    r = float(r)
-
-    # Boolean array where "True" is a pixel inside the circle of analysis
-    in_circ = np.sqrt((xx - x) ** 2 + (yy - y) ** 2) <= r
-
-    # "Turn off" all pixels outside of current circle
-    ret_im = col_map
-    ret_im[~in_circ] = [0, 0, 0]
-
-    return ret_im
-
-
-def _add_color_to_background(micro_im: np.array,
-                             colored_particle_im: np.array) -> np.array:
-    r'''Given the background image of the microstructure, this function returns
-        a new image which replaces the background of the circle of interest
-        with its colormap. Original dimensions of the colormap is preserved.'''
-
-    # Determine the pixels with color
-    colored = np.all(colored_particle_im == [0, 0, 0], axis=-1)
-    colored = ~colored
-
-    ret_im = np.copy(micro_im)
-    # Micro im: remove color from circle of interest
-    ret_im[colored] = [0, 0, 0]
-    ret_im = ret_im + colored_particle_im
-
-    return ret_im
+        # "Turn off" all pixels outside of current circle
+        # Note: can be problematic if we start with 0 for concentration...
+        # May be better to use the pore-phase encoding value.
+        ret_im[~in_circ] = 0
+        return ret_im
 
 
 if __name__ == "__main__":
     # Load user settings
     settings = load_json("dataset_specs.json")
 
-    L = settings["L"]
-    h_cell = settings["h_cell"]
-
-    # Resolution of the colormap images relative to the dimensions
-    scale = settings["scale"]
-
-    # How big the box should be with respect to the radius of the circle
-    width_wrt_radius = settings["width_wrt_radius"]
-    output_img_size = settings["img_size"]
-
     # Create directories and return path of each
-    (dataset_dir,
-     input_dir,
-     label_dir) = create_output_dirs(
+    (
+        dataset_dir,
+        input_dir,
+        label_dir,
+    ) = create_output_dirs(
         settings["input_dir"],
-        settings["label_dir"])
+        settings["label_dir"],
+    )
 
     # Load metadata generated from COMSOL
-    micro_data = load_json("metadata.json")
-
-    # Generate Machine Learning data
-    generate_ml_dataset(
-        (L, h_cell),
-        (scale, output_img_size, width_wrt_radius),
-        (dataset_dir, input_dir, label_dir),
-        micro_data,
+    microstructure_data: List[typings.Microstructure_Data] = load_json(
+        "metadata.json"
     )
+
+    def micro_arr_fname(num): return "micro_%s.npy" % (num)
+
+    dataset_json: Dict[str, typings.Metadata] = {}
+
+    pic_num = 1
+
+    for idx, data in enumerate(microstructure_data[0:1]):
+        micro = Microstructure_Breaker_Upper(
+            micro_num=str(idx + 1),
+            solmap_path=os.path.join(
+                os.getcwd(),
+                str(idx + 1),
+            ),
+            micro_arr=np.load(micro_arr_fname(str(idx + 1))),
+            L=settings["L"],
+            h_cell=settings["h_cell"],
+            particles=data["circles"],
+            scale=settings["scale"],
+            sol_max=settings["sol_max"],
+            pore_encoding=settings["pore_encoding"],
+            padding_encoding=settings["padding_encoding"],
+        )
+
+        pic_num, meta_dict = micro.ml_data_from_all_solmaps(
+            settings["width_wrt_radius"],
+            settings["img_size"],
+            input_dir,
+            label_dir,
+            pic_num,
+        )
+
+        dataset_json.update(meta_dict)
+
+    with open(
+        os.path.join(dataset_dir, "dataset.json"),
+        "w",
+    ) as outfile:
+        json.dump(dataset_json, outfile, indent=4)
