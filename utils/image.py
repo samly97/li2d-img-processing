@@ -8,10 +8,13 @@ import tensorflow as tf
 from utils.numerics import get_electrode_meshgrid
 
 
-def extract_input(box_radius: int,
-                  micro_im: np.array,
-                  circle: Tuple[str, str, str],
-                  scale: int) -> Tuple[np.array, np.array]:
+def extract_input(
+    box_radius: int,
+    micro_im: np.ndarray,
+    circle: Tuple[str, str, str],
+    scale: int,
+    padding: int = 0
+) -> np.ndarray:
     r'''
     Gets both the input (blank)
 
@@ -20,7 +23,11 @@ def extract_input(box_radius: int,
 
     x, y, _ = circle
 
-    padded_micro = pad_image(micro_im, box_radius)
+    padded_micro = pad_image(
+        micro_im,
+        box_radius,
+        padding
+    )
 
     # New coordinates for (x, y) after padding
     x_new, y_new = padded_coords(
@@ -40,16 +47,20 @@ def extract_input(box_radius: int,
     return input_im
 
 
-def pad_image(orig_im: np.array,
+def pad_image(orig_im: np.ndarray,
               pad_width: int,
-              pad_type="constant") -> np.array:
+              padding_value: int = 0,
+              pad_type="constant") -> np.ndarray:
     ret_im = np.copy(orig_im)
-    ret_im = np.pad(ret_im,
-                    (
-                        (pad_width, pad_width),
-                        (pad_width, pad_width),
-                        (0, 0),
-                    ), pad_type)
+    ret_im = np.pad(
+        ret_im,
+        (
+            (pad_width, pad_width),
+            (pad_width, pad_width),
+            (0, 0),
+        ), pad_type,
+        constant_values=(padding_value,),
+    )
 
     return ret_im
 
@@ -67,9 +78,9 @@ def padded_coords(
 
 
 def zoom_image(
-    img: np.array,
+    img: np.ndarray,
     output_img_size: int = 200
-) -> Tuple[np.array, float]:
+) -> Tuple[np.ndarray, float]:
 
     img_size, _, _ = img.shape
     zoom_factor = output_img_size / img_size
@@ -82,7 +93,7 @@ def zoom_image(
 def create_circle_mask(
     width_wrt_radius: float,
     scale: int = 10,
-) -> np.array:
+) -> np.ndarray:
     r''' create_circle_mask creates a boolean circle centered in a square
     image. The distance from the center of the circle to the edge is specified
     using "width_wrt_radius".
@@ -169,7 +180,7 @@ def circle_mask_as_vector_of_indices(
 def tf_circle_mask(
     tf_img_size: int,
     width_wrt_radius: float,
-    particle_color: np.array,
+    particle_color: np.ndarray,
     scale: int = 10,
 ) -> tf.Tensor:
     r'''
@@ -206,7 +217,7 @@ def electrode_mask_2D(
     L: int,
     h_cell: int,
     scale: int = 10,
-) -> np.array:
+) -> np.ndarray:
     r''' `electrode_mask_2D` returns a NumPy array where `True` values indicate
     where an electrode particle is. Circular particles are assumed.
 
