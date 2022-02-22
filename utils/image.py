@@ -79,14 +79,15 @@ def padded_coords(
 
 def zoom_image(
     img: np.ndarray,
-    output_img_size: int = 200
+    output_img_size: int = 200,
+    order: int = 0,
 ) -> Tuple[np.ndarray, float]:
 
     img_size, _, _ = img.shape
     zoom_factor = output_img_size / img_size
     zoom_tuple = (zoom_factor,) * 2 + (1,)
 
-    ret_im = zoom(img, zoom_tuple)
+    ret_im = zoom(img, zoom_tuple, order=order)
     return ret_im, zoom_factor
 
 
