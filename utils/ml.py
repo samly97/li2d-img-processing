@@ -1,27 +1,23 @@
-from typing import Dict, Tuple, List
+from typing import Tuple, List
 from tqdm import tqdm
-
-from .io import load_json
-from .image import extract_input, zoom_image
-from .metrics import measure_porosity
 
 import numpy as np
 from skimage import io
 import tensorflow as tf
-
 from math import ceil
 
-# Custom Typings
+from utils.io import load_json
+from utils.image import extract_input, zoom_image
+from utils.metrics import measure_porosity
 
-_META_DICT = Dict[str, float]
-_CIRC_INFO = List[Dict[str, str]]
+from utils import typings
 
 
 def predict_and_rmse(
     model,
     dataset: tf.data.Dataset,
-    images: np.array
-) -> Tuple[np.array, tf.Tensor]:
+    images: np.ndarray
+) -> Tuple[np.ndarray, tf.Tensor]:
     '''
     predict_and_rmse returns the predicted images as well as the Root Mean
     Square Error (RMSE) of the given dataset. Should be used when user has
@@ -57,11 +53,11 @@ def micro_to_dataset_loader(
     batch_size: int,
     norm_metadata: Tuple[int, int, int, float, int, int],
     circle_data: Tuple[str, int, str],
-    micro_data: Tuple[str, np.array, int],
+    micro_data: Tuple[str, np.ndarray, int],
     user_params: Tuple[int, int, int],
-    arr_imgs: np.array = None,
-    arr_meta: List[_META_DICT] = None,
-) -> Tuple[tf.data.Dataset, np.array, List[_META_DICT]]:
+    arr_imgs: np.ndarray = None,
+    arr_meta: List[typings.Metadata] = None,
+) -> Tuple[tf.data.Dataset, np.ndarray, List[typings.Metadata]]:
     r''' micro_to_dataset_loader takes a 2D electrode microstructure with
     spherical electrode particles and creates a tf.data.Dataset loader amenable
     for predictions using a Neural Network.
@@ -109,7 +105,7 @@ def micro_to_dataset_loader(
 
 
 def _norm_metadata(
-    arr_meta: List[str],
+    arr_meta: List[typings.Metadata],
     norm_metadata: Tuple[int, int, int, float, int, int],
 ) -> List[str]:
     L, h_cell, R_max, zoom_norm, c_rate_norm, time_norm = norm_metadata
@@ -121,7 +117,7 @@ def _norm_metadata(
         y = float(data["y"]) / h_cell
         R = float(data["R"]) / R_max
         zoom = float(data["zoom_factor"]) / zoom_norm
-        c_rate = float(data["c-rate"]) / c_rate_norm
+        c_rate = float(data["c_rate"]) / c_rate_norm
         time = float(data["time"]) / time_norm
         porosity = float(data["porosity"])
         dist_from_sep = float(data["dist_from_sep"])
@@ -137,7 +133,7 @@ def _norm_metadata(
 
 
 def _micro_data_to_tf_loader(
-    arr_imgs: np.array,
+    arr_imgs: np.ndarray,
     arr_meta: List[str],
     tf_img_size: int,
     batch_size: int = 32,
@@ -186,7 +182,7 @@ def _micro_data_to_tf_loader(
 
 def _load_image(
     idx_num,
-    arr_imgs: np.array,
+    arr_imgs: np.ndarray,
     im_size: int,
 ):
     img = tf.gather(arr_imgs, idx_num)
@@ -207,9 +203,9 @@ def _format_metadata(
 
 def _prep_micro_data(
     circle_data: Tuple[str, int, str],
-    micro_data: Tuple[str, np.array, int],
+    micro_data: Tuple[str, np.ndarray, int],
     user_params: Tuple[int, int, int],
-) -> Tuple[np.array, List[_META_DICT]]:
+) -> Tuple[np.ndarray, List[typings.Metadata]]:
     r''' Extracts each from an electrode microstructure, centering it with a
     constant "box radius" as well as preparing the metadata.
     '''
@@ -218,7 +214,7 @@ def _prep_micro_data(
     micro_fname, pore_color, cell_length = micro_data
     width_wrt_radius, scale, output_img_size = user_params
 
-    circle_data = _get_circ_data(
+    list_circ_hash = _get_circ_data(
         circle_data_fname,
         micro_key,
         circle_key,
@@ -227,7 +223,7 @@ def _prep_micro_data(
     micro_im = io.imread(micro_fname)
 
     arr_imgs, arr_meta = _extract_image_and_meta(
-        circle_data,
+        list_circ_hash,
         micro_im,
         pore_color,
         cell_length,
@@ -242,12 +238,12 @@ def _prep_micro_data(
 def _set_rate_and_time(
     c_rate: float,
     time: float,
-    arr_meta: List[_META_DICT]
-) -> List[_META_DICT]:
+    arr_meta: List[typings.Metadata]
+) -> List[typings.Metadata]:
 
     for idx, hash in enumerate(arr_meta):
-        hash["c-rate"] = c_rate
-        hash["time"] = time
+        hash["c_rate"] = str(c_rate)
+        hash["time"] = str(time)
 
         arr_meta[idx] = hash
 
@@ -255,14 +251,14 @@ def _set_rate_and_time(
 
 
 def _extract_image_and_meta(
-    circ_data: _CIRC_INFO,
-    micro_im: np.array,
-    pore_color: np.array,
+    circ_data: List[typings.Circle_Info],
+    micro_im: np.ndarray,
+    pore_color: np.ndarray,
     cell_length: int,
     width_wrt_radius: int = 3,
     scale: int = 10,
     output_img_size: int = 200,
-) -> Tuple[np.array, List[_META_DICT]]:
+) -> Tuple[np.ndarray, List[typings.Metadata]]:
     num_circs = len(circ_data)
 
     arr_imgs = np.zeros(
@@ -298,11 +294,14 @@ def _extract_image_and_meta(
             output_img_size,
         )
 
-        circ_meta = {
+        circ_meta: typings.Metadata = {
+            'micro': '-1',
             'x': x,
             'y': y,
             'R': r,
             'zoom_factor': zoom_factor,
+            'c_rate': '-1',
+            'time': '-1',
             'porosity': porosity,
             'dist_from_sep': float(x) / cell_length,
         }
@@ -317,7 +316,7 @@ def _get_circ_data(
     filename: str = "metadata.json",
     micro_key: int = 1,
     circle_key: str = "circles",
-) -> _CIRC_INFO:
+) -> List[typings.Circle_Info]:
     microstructures = load_json(filename)
     circle_data = microstructures[micro_key - 1][circle_key]
     return circle_data
