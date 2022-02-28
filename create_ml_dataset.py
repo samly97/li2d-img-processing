@@ -121,7 +121,9 @@ class Microstructure_Breaker_Upper():
         # Derived quantities
         self.micro_arr = micro_arr
         self.meshgrid = get_electrode_meshgrid(L, h_cell, scale)
-        self.sol_maps = self._get_solmaps()
+
+        if self.solmap_path != "":
+            self.sol_maps = self._get_solmaps()
 
     def _get_solmaps(self) -> List[SOLmap]:
         cm_dir = os.path.join(self.solmap_path, "col")
@@ -157,7 +159,7 @@ class Microstructure_Breaker_Upper():
                 )
 
                 # Insert metadata
-                ret_dict[pic_num] = metadata
+                ret_dict[str(pic_num)] = metadata
 
                 # Save input image
                 input_fname = os.path.join(
@@ -219,6 +221,80 @@ class Microstructure_Breaker_Upper():
         }
 
         return input_im, label_im, metadata
+
+    def extract_particles_from_microstructure(
+        self,
+        width_wrt_radius: int,
+        output_img_size: int,
+        order: int,
+    ) -> Tuple[np.ndarray, List[typings.Metadata]]:
+        extracted_ims = np.zeros(
+            (len(self.particles),
+             output_img_size,
+             output_img_size,
+             1,
+             ),
+            dtype=np.uint16,
+        )
+        arr_meta = []
+
+        for idx, particle in tqdm(enumerate(self.particles)):
+            circ_im, metadata = self._extract_particle_from_microstructures(
+                particle,
+                width_wrt_radius,
+                output_img_size,
+                order,
+            )
+
+            extracted_ims[idx] = circ_im
+            arr_meta.append(metadata)
+
+        return extracted_ims, arr_meta
+
+    def _extract_particle_from_microstructures(
+        self,
+        particle: typings.Circle_Info,
+        width_wrt_radius: int,
+        output_img_size: int,
+        order: int,
+    ) -> Tuple[np.ndarray, typings.Metadata]:
+        R = particle["R"]
+        # Size image according to radius factor
+        box_radius = ceil(float(R) * self.scale * width_wrt_radius)
+
+        circ_im = extract_input(
+            box_radius,
+            self.micro_arr,
+            (particle['x'], particle['y'], ""),
+            self.scale,
+            self.padding_encoding,
+        )
+
+        porosity = measure_porosity(
+            circ_im,
+            np.array(self.pore_encoding),
+            np.array(self.padding_encoding),
+        )
+
+        zoomed_circ_im, zoom_factor = zoom_image(
+            circ_im,
+            output_img_size,
+            order=order,
+        )
+
+        circ_meta: typings.Metadata = {
+            'micro': '-1',
+            'x': particle["x"],
+            'y': particle["y"],
+            'R': particle["R"],
+            'zoom_factor': zoom_factor,
+            'c_rate': '-1',
+            'time': '-1',
+            'porosity': porosity,
+            'dist_from_sep': float(particle["x"]) / self.L,
+        }
+
+        return zoomed_circ_im, circ_meta
 
     def extract_input_and_cmap_im(
         self,
