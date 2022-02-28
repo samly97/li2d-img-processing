@@ -27,7 +27,7 @@ class Custom_2D_ROI_MSE(tf.keras.losses.Loss):
         return mse
 
     def _img_to_vector(self, y):
-        shape = y.shape
+        shape = tf.shape(y)
         dim = tf.reduce_prod(shape[1:-1])
 
         y = tf.reshape(y, (-1, dim, shape[-1]))
