@@ -43,12 +43,19 @@ class ETL_Functions():
     def gather_img_from_np_arr(
         idx_num: int,
         arr_imgs: np.ndarray,
+        img_size: int,
         tf_img_size: int,
+        order: int = 0,
     ) -> tf.types.experimental.TensorLike:
-        "Note: may not work, or need to change to use scipy.zoom"
         img = tf.gather(arr_imgs, idx_num)
         img = tf.convert_to_tensor(img)
-        img = tf.image.resize(img, (tf_img_size, tf_img_size))
+
+        zoom_factor = tf_img_size / img_size
+        img = tf.py_function(
+            lambda a: zoom(a, (zoom_factor, zoom_factor, 1), order=order),
+            [img],
+            tf.float32,
+        )
         return img
 
     @ staticmethod
