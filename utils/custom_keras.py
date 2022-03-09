@@ -63,6 +63,9 @@ class Laplacian_MSE(tf.keras.losses.Loss):
             self._get_neighbourhood,
             self._col_points,
         )
+        # Trick to get tf.map_fn to work when computing the Laplacian because
+        # apparently the thing wants the input type (should be tf.int32 because
+        # these are indices) to be of the output type (tf.float32).
         self.list_boxes = tf.cast(self.list_boxes, dtype=tf.float32)
 
     def call(self, y_true, y_pred):
@@ -108,6 +111,7 @@ class Laplacian_MSE(tf.keras.losses.Loss):
         ], dtype=tf.float32)
         laplacian = tf.reshape(laplacian, (9,))
 
+        # These are indices so we cast them back to an integer type
         box = tf.cast(box, dtype=tf.int64)
 
         region = tf.gather_nd(
