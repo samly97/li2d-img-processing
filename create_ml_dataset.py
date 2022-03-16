@@ -189,10 +189,12 @@ class Microstructure_Breaker_Upper():
     ) -> Tuple[np.ndarray, np.ndarray, typings.Metadata]:
         R = particle["R"]
         # Size image according to radius factor
-        box_radius = ceil(float(R) * self.scale * width_wrt_radius)
+        pore_box_radius = ceil(float(R) * self.scale * width_wrt_radius)
+        label_box_radius = ceil(float(R) * self.scale)
 
         input_im, label_im = self.extract_input_and_cmap_im(
-            box_radius,
+            pore_box_radius,
+            label_box_radius,
             solmap,
             particle,
         )
@@ -205,8 +207,8 @@ class Microstructure_Breaker_Upper():
             np.array(self.padding_encoding),
         )
 
-        input_im, zoom_factor = zoom_image(input_im, output_img_size, order=0)
-        label_im, _ = zoom_image(label_im, output_img_size, order=0)
+        input_im, _ = zoom_image(input_im, output_img_size, order=0)
+        label_im, zoom_factor = zoom_image(label_im, output_img_size, order=0)
 
         metadata: typings.Metadata = {
             "micro": self.micro_num,
@@ -260,11 +262,22 @@ class Microstructure_Breaker_Upper():
     ) -> Tuple[np.ndarray, typings.Metadata]:
         R = particle["R"]
         # Size image according to radius factor
-        box_radius = ceil(float(R) * self.scale * width_wrt_radius)
+        pore_box_radius = ceil(float(R) * self.scale * width_wrt_radius)
+        label_box_radius = ceil(float(R) * self.scale)
+
+        micro_arr = np.copy(self.micro_arr)
+        dummy = np.copy(micro_arr)
 
         circ_im = extract_input(
-            box_radius,
-            self.micro_arr,
+            pore_box_radius,
+            micro_arr,
+            (particle['x'], particle['y'], ""),
+            self.scale,
+            self.padding_encoding,
+        )
+        dummy_im = extract_input(
+            label_box_radius,
+            dummy,
             (particle['x'], particle['y'], ""),
             self.scale,
             self.padding_encoding,
@@ -276,8 +289,13 @@ class Microstructure_Breaker_Upper():
             np.array(self.padding_encoding),
         )
 
-        zoomed_circ_im, zoom_factor = zoom_image(
+        zoomed_circ_im, _ = zoom_image(
             circ_im,
+            output_img_size,
+            order=order,
+        )
+        _, zoom_factor = zoom_image(
+            dummy_im,
             output_img_size,
             order=order,
         )
@@ -298,7 +316,8 @@ class Microstructure_Breaker_Upper():
 
     def extract_input_and_cmap_im(
         self,
-        box_radius: int,
+        pore_box_radius: int,
+        label_box_radius: int,
         solmap: SOLmap,
         particle: typings.Circle_Info,
     ) -> Tuple[np.ndarray, np.ndarray]:
@@ -314,14 +333,14 @@ class Microstructure_Breaker_Upper():
         )
 
         input_im = extract_input(
-            box_radius,
+            pore_box_radius,
             micro_im,
             (particle['x'], particle['y'], ""),
             self.scale,
             self.padding_encoding,
         )
         label_im = extract_input(
-            box_radius,
+            label_box_radius,
             sol_values,
             (particle['x'], particle['y'], ""),
             self.scale,

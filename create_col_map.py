@@ -15,6 +15,8 @@ from utils.numerics import get_inscribing_meshgrid
 from utils.numerics import get_inscribing_coords
 from utils.numerics import get_coords_in_circle
 
+from utils.image import electrode_mask_2D
+
 from utils import typings
 
 
@@ -155,6 +157,12 @@ class Microstructure():
             )
 
         self.experiments: Dict[str, Experiment] = self._get_experiments()
+        self.electrode_mask = electrode_mask_2D(
+            self.particles,
+            self.L,
+            self.h_cell,
+            self.scale,
+        )
 
     def __str__(self):
         return (
@@ -278,6 +286,8 @@ class Microstructure():
                 x_inter,
                 :
             ] = sol_inter.reshape((sol_inter.size, 1))
+
+            im[~self.electrode_mask, :] = [0]
 
         return im
 

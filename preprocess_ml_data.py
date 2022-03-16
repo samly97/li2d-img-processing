@@ -118,7 +118,7 @@ def preprocess_ml_data() -> Tuple[
         )),
         ignore_key(leave_first(
             tf.math.divide,
-            tf.cast(60000, dtype=tf.float32)
+            tf.cast(65535, dtype=tf.float32)
         )),
     ]
 
