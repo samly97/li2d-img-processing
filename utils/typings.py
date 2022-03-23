@@ -35,6 +35,7 @@ class Metadata(TypedDict):
     time: str
     dist_from_sep: float
     porosity: float
+    local_tortuosity: float
 
 
 class Metadata_Normalizations(TypedDict):
@@ -44,3 +45,4 @@ class Metadata_Normalizations(TypedDict):
     zoom_norm: float
     c_rate_norm: float
     time_norm: int
+    local_tortuosity_norm: float

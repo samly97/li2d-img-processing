@@ -4,7 +4,6 @@ from .numerics import get_coords_in_circle, get_inscribing_meshgrid
 
 import numpy as np
 import tensorflow as tf
-import matplotlib
 
 from .image import zoom_image
 
@@ -57,7 +56,7 @@ def electrode_mask_exceeding_absolute_SOL_error_threshold(
 def electrode_colormap(
     sol_map: np.array,
     electrode_mask: np.array,
-    colormap: matplotlib.cm,
+    colormap,
     multiply_by_rgb: bool = True,
 ) -> np.array:
     r''' `electrode_colormap` takes in the predicted State-of-Lithiation values

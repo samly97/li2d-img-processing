@@ -203,8 +203,12 @@ class ETL_2D():
         time = float(hash["time"]) / self.metadata_norm["time_norm"]
         porosity = float(hash["porosity"])
         dist_from_sep = float(hash["dist_from_sep"])
+        local_tortuosity = float(
+            hash["local_tortuosity"]
+        ) / self.metadata_norm["local_tortuosity_norm"]
 
-        as_float = [x, y, R, zoom, c_rate, time, porosity, dist_from_sep]
+        as_float = [x, y, R, zoom, c_rate, time,
+                    porosity, dist_from_sep, local_tortuosity]
 
         s = "-"
         ret = s.join(str(num) for num in as_float)

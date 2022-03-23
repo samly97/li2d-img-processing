@@ -13,6 +13,7 @@ from utils.numerics import get_electrode_meshgrid
 from utils.image import extract_input
 from utils.image import zoom_image
 from utils.metrics import measure_porosity
+from utils.metrics import tortuosity_to_particle
 
 from utils import typings
 
@@ -96,6 +97,7 @@ class Microstructure_Breaker_Upper():
         sol_max: int,
         pore_encoding: int,
         padding_encoding: int,
+        width_wrt_radius: int,
         scale: int = 10,
     ):
         self.micro_num = micro_num
@@ -125,6 +127,12 @@ class Microstructure_Breaker_Upper():
         if self.solmap_path != "":
             self.sol_maps = self._get_solmaps()
 
+        # Calculate tortuosities - Only have to do this once per
+        # microstructure!
+        self.particle_tortuosities = self._estimate_particle_tortuosities(
+            width_wrt_radius,
+        )
+
     def _get_solmaps(self) -> List[SOLmap]:
         cm_dir = os.path.join(self.solmap_path, "col")
         # Assumes only colormap images in this directory
@@ -138,6 +146,29 @@ class Microstructure_Breaker_Upper():
         ]
 
         return solmaps
+
+    def _estimate_particle_tortuosities(
+        self,
+        width_wrt_radius: int,
+    ) -> Dict[Tuple[object, ...], float]:
+        tortuosity_dict = {}
+        for particle in self.particles:
+            particle_tuple = tuple(particle.values())
+
+            try:
+                tortuosity_dict[particle_tuple] = tortuosity_to_particle(
+                    self.micro_arr,
+                    particle,
+                    width_wrt_radius,
+                    self.pore_encoding,
+                    scale=self.scale,
+                )
+                # Consider data imputation when tortuosity cannot be calculated
+            except Exception:
+                print(particle_tuple)
+                tortuosity_dict[particle_tuple] = 0
+
+        return tortuosity_dict
 
     def ml_data_from_all_solmaps(
         self,
@@ -207,6 +238,10 @@ class Microstructure_Breaker_Upper():
             np.array(self.padding_encoding),
         )
 
+        # Considering tortuosity to the center of the particle
+        particle_tuple = tuple(particle.values())
+        local_tortuosity = self.particle_tortuosities[particle_tuple]
+
         input_im, _ = zoom_image(input_im, output_img_size, order=0)
         label_im, zoom_factor = zoom_image(label_im, output_img_size, order=0)
 
@@ -220,6 +255,7 @@ class Microstructure_Breaker_Upper():
             "time": solmap.time,
             "dist_from_sep": float(particle["x"])/self.L,
             "porosity": porosity,
+            "local_tortuosity": local_tortuosity,
         }
 
         return input_im, label_im, metadata
@@ -300,6 +336,10 @@ class Microstructure_Breaker_Upper():
             order=order,
         )
 
+        # Considering tortuosity to the center of the particle
+        particle_tuple = tuple(particle.values())
+        local_tortuosity = self.particle_tortuosities[particle_tuple]
+
         circ_meta: typings.Metadata = {
             'micro': '-1',
             'x': particle["x"],
@@ -310,6 +350,7 @@ class Microstructure_Breaker_Upper():
             'time': '-1',
             'porosity': porosity,
             'dist_from_sep': float(particle["x"]) / self.L,
+            'local_tortuosity': local_tortuosity,
         }
 
         return zoomed_circ_im, circ_meta
@@ -424,6 +465,7 @@ if __name__ == "__main__":
             sol_max=settings["sol_max"],
             pore_encoding=settings["pore_encoding"],
             padding_encoding=settings["padding_encoding"],
+            width_wrt_radius=settings["width_wrt_radius"],
         )
 
         pic_num, meta_dict = micro.ml_data_from_all_solmaps(

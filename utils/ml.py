@@ -154,6 +154,7 @@ def _prep_micro_data(
         -1,
         pore_encoding,
         padding_encoding,
+        width_wrt_radius,
         scale,
     )
 

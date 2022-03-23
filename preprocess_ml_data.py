@@ -71,6 +71,7 @@ def preprocess_ml_data() -> Tuple[
         "zoom_norm": settings["zoom_max"],
         "c_rate_norm": settings["c-rate"],
         "time_norm": settings["time"],
+        "local_tortuosity_norm": settings["tortuosity_max"],
     }
 
     dataset_json: Dict[str, typings.Metadata] = load_json(
