@@ -155,10 +155,10 @@ def circle_mask_as_vector_of_indices(
         width_wrt_radius,
         scale=scale,
     )
-    mask = tf.cast(mask, dtype=tf.int32)
-    mask = tf.image.resize(mask, (img_size, img_size))
+    mask_tf = tf.cast(mask, dtype=tf.int32)
+    mask_tf = tf.image.resize(mask, (img_size, img_size))
 
-    mask = mask.numpy()
+    mask = mask_tf.numpy()
     # Check location of particle
     mask = np.all(mask == [1], axis=-1)
 
@@ -217,6 +217,7 @@ def electrode_mask_2D(
     circles: List[Dict[str, str]],
     L: int,
     h_cell: int,
+    R_factor: float = 1,
     scale: int = 10,
 ) -> np.ndarray:
     r''' `electrode_mask_2D` returns a NumPy array where `True` values indicate
@@ -249,7 +250,7 @@ def electrode_mask_2D(
         R = float(dict["R"])
 
         in_circ = np.sqrt((xx - x * scale) ** 2
-                          + (yy - y * scale) ** 2) <= R * scale
+                          + (yy - y * scale) ** 2) <= R * R_factor * scale
 
         electrode_mask[in_circ] = True
 
