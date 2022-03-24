@@ -219,6 +219,7 @@ def electrode_mask_2D(
     h_cell: int,
     R_factor: float = 1,
     scale: int = 10,
+    mode: str = "circle",
 ) -> np.ndarray:
     r''' `electrode_mask_2D` returns a NumPy array where `True` values indicate
     where an electrode particle is. Circular particles are assumed.
@@ -249,8 +250,15 @@ def electrode_mask_2D(
         y = float(dict["y"])
         R = float(dict["R"])
 
-        in_circ = np.sqrt((xx - x * scale) ** 2
-                          + (yy - y * scale) ** 2) <= R * R_factor * scale
+        if mode == "circle":
+            in_circ = np.sqrt((xx - x * scale) ** 2
+                              + (yy - y * scale) ** 2) <= R * R_factor * scale
+        elif mode == "ring":
+            cond1 = np.sqrt((xx - x * scale) ** 2 + (yy - y *
+                            scale) ** 2) <= R * R_factor * scale
+            cond2 = np.sqrt((xx - x * scale) ** 2
+                            + (yy - y * scale) ** 2) >= R * scale * 0.85
+            in_circ = cond1 == cond2
 
         electrode_mask[in_circ] = True
 
