@@ -255,9 +255,9 @@ def electrode_mask_2D(
                               + (yy - y * scale) ** 2) <= R * R_factor * scale
         elif mode == "ring":
             cond1 = np.sqrt((xx - x * scale) ** 2 + (yy - y *
-                            scale) ** 2) <= R * R_factor * scale
+                            scale) ** 2) <= R * scale
             cond2 = np.sqrt((xx - x * scale) ** 2
-                            + (yy - y * scale) ** 2) >= R * scale * 0.85
+                            + (yy - y * scale) ** 2) >= R * scale * R_factor
             in_circ = cond1 == cond2
 
         electrode_mask[in_circ] = True
