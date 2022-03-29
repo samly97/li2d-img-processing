@@ -11,7 +11,6 @@ from utils import typings
 
 def create_micro_png(
     micro_hash: typings.Microstructure_Data,
-    L: int,
     h_cell: int,
     grid_size: int,
     scale: int,
@@ -19,6 +18,7 @@ def create_micro_png(
     solid_phase: int = 2 ** 16 - 2,
 ) -> np.ndarray:
     circ_list = micro_hash["circles"]
+    L = micro_hash["L"]
 
     micro_im = np.zeros(shape=(h_cell * scale, L * scale, 1),
                         dtype=np.uint16)
@@ -68,7 +68,6 @@ if __name__ == "__main__":
     for i, micro in enumerate(ret):
         micro_im = create_micro_png(
             micro,
-            settings["L"],
             settings["h_cell"],
             settings["grid_size"],
             settings["scale"],
