@@ -11,8 +11,8 @@ import numpy as np
 # https://stackoverflow.com/questions/14132789/relative-imports-for-the-billionth-time
 from utils import typings
 from create_micro_pngs import create_micro_png
-from create_col_map import Microstructure
-from create_col_map import COMSOL_Electrochem_CSV
+from preprocessing.process import Microstructure
+from preprocessing.data import COMSOL_Electrochem_CSV
 
 
 class DataProcessingTest():
@@ -44,13 +44,14 @@ class DataProcessingTest():
         grid_size = 1000
         scale = 10
 
+        self.micro_data["L"] = L
+
         # Values to encode phases
         pore_phase = 2 ** 16 - 1
         solid_phase = 2 ** 16 - 2
 
         micro_arr = create_micro_png(
             self.micro_data,
-            L,
             h_cell,
             grid_size,
             scale,

@@ -7,8 +7,8 @@ from math import ceil
 import tensorflow as tf
 
 from utils.io import load_json
-from utils.etl import ETL_Functions, ETL_2D
-from utils.etl import leave_first, ignore_key, ignore_tensor
+from etl.etl import ETL_Functions, ETL_2D
+from etl.etl import leave_first, ignore_key, ignore_tensor
 
 from utils import typings
 
