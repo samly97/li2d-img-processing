@@ -1,10 +1,11 @@
-from typing import Tuple, List, Dict
+from typing import Tuple, List
 
 import numpy as np
 from scipy.ndimage import zoom
 from math import ceil
 import tensorflow as tf
 
+from utils import typings
 from utils.numerics import get_electrode_meshgrid
 
 
@@ -156,7 +157,7 @@ def circle_mask_as_vector_of_indices(
         scale=scale,
     )
     mask_tf = tf.cast(mask, dtype=tf.int32)
-    mask_tf = tf.image.resize(mask, (img_size, img_size))
+    mask_tf = tf.image.resize(mask_tf, (img_size, img_size))
 
     mask = mask_tf.numpy()
     # Check location of particle
@@ -214,7 +215,7 @@ def tf_circle_mask(
 
 
 def electrode_mask_2D(
-    circles: List[Dict[str, str]],
+    circles: List[typings.Circle_Info],
     L: int,
     h_cell: int,
     R_factor: float = 1,
