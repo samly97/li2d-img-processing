@@ -6,7 +6,7 @@ import os
 import numpy as np
 
 from utils import typings
-from utils import load_json
+from utils.io import load_json
 from etl.extract import Microstructure_Breaker_Upper
 
 
@@ -68,7 +68,7 @@ if __name__ == "__main__":
                 str(idx + 1),
             ),
             micro_arr=np.load(micro_arr_fname(str(idx + 1))),
-            L=settings["L"],
+            L=int(microstructure_data[idx]["length"]),
             h_cell=settings["h_cell"],
             particles=data["circles"],
             scale=settings["scale"],

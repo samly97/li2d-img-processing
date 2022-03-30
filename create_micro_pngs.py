@@ -18,7 +18,7 @@ def create_micro_png(
     solid_phase: int = 2 ** 16 - 2,
 ) -> np.ndarray:
     circ_list = micro_hash["circles"]
-    L = micro_hash["L"]
+    L = int(micro_hash["length"])
 
     micro_im = np.zeros(shape=(h_cell * scale, L * scale, 1),
                         dtype=np.uint16)

@@ -10,7 +10,6 @@ from preprocessing.process import Microstructure
 if __name__ == "__main__":
     settings = load_json("colourmap_specs.json")
 
-    L = settings["L"]
     h_cell = settings["h_cell"]
     c_rates = settings["c_rates"]
 
@@ -28,7 +27,7 @@ if __name__ == "__main__":
         micro = Microstructure(
             echem_csv_handler,
             micro_path=str(idx + 1),
-            L=L,
+            L=int(microstructure_data[idx]["length"]),
             h_cell=h_cell,
             c_rates=c_rates,
             particles=data["circles"],
