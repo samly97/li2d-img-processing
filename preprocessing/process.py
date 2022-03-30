@@ -66,7 +66,7 @@ class Microstructure():
             self.particles,
             self.L,
             self.h_cell,
-            self.scale,
+            scale=self.scale,
         )
 
     def __str__(self):

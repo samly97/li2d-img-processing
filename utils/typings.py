@@ -20,6 +20,7 @@ class Circle_Info(TypedDict):
 
 class Microstructure_Data(TypedDict):
     id: int
+    length: int
     porosity: str
     tortuosity: str
     circles: List[Circle_Info]
@@ -27,9 +28,10 @@ class Microstructure_Data(TypedDict):
 
 class Metadata(TypedDict):
     micro: str
-    x: str
+    x: float
     y: str
     R: str
+    L: int
     zoom_factor: float
     c_rate: str
     time: str

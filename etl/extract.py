@@ -184,9 +184,10 @@ class Microstructure_Breaker_Upper():
 
         metadata: typings.Metadata = {
             "micro": self.micro_num,
-            "x": particle["x"],
+            "x": float(particle["x"]) / self.L,
             "y": particle["y"],
             "R": particle["R"],
+            "L": self.L,
             "zoom_factor": zoom_factor,
             "c_rate": solmap.c_rate,
             "time": solmap.time,
@@ -274,9 +275,10 @@ class Microstructure_Breaker_Upper():
 
         circ_meta: typings.Metadata = {
             'micro': '-1',
-            'x': particle["x"],
+            'x': float(particle["x"]) / self.L,
             'y': particle["y"],
             'R': particle["R"],
+            'L': self.L,
             'zoom_factor': zoom_factor,
             'c_rate': '-1',
             'time': '-1',

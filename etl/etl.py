@@ -195,16 +195,17 @@ class ETL_2D():
 
         hash = metadata[str(pic_num)]
 
-        x = float(hash["x"]) / self.metadata_norm["L"]
+        x = float(hash["x"])
         y = float(hash["y"]) / self.metadata_norm["h_cell"]
         R = float(hash["R"]) / self.metadata_norm["R_max"]
+        L = float(hash["L"]) / self.metadata_norm["L"]
         zoom = float(hash["zoom_factor"]) / self.metadata_norm["zoom_norm"]
         c_rate = float(hash["c_rate"]) / self.metadata_norm["c_rate_norm"]
         time = float(hash["time"]) / self.metadata_norm["time_norm"]
         porosity = float(hash["porosity"])
         dist_from_sep = float(hash["dist_from_sep"])
 
-        as_float = [x, y, R, zoom, c_rate, time, porosity, dist_from_sep]
+        as_float = [x, y, R, L, zoom, c_rate, time, porosity, dist_from_sep]
 
         s = "-"
         ret = s.join(str(num) for num in as_float)
