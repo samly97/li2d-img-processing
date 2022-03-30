@@ -10,6 +10,7 @@ import numpy as np
 #
 # https://stackoverflow.com/questions/14132789/relative-imports-for-the-billionth-time
 from utils import typings
+from utils.image import electrode_mask_2D
 from create_micro_pngs import create_micro_png
 from preprocessing.process import Microstructure
 from preprocessing.data import COMSOL_Electrochem_CSV
@@ -44,7 +45,7 @@ class DataProcessingTest():
         grid_size = 1000
         scale = 10
 
-        self.micro_data["L"] = L
+        self.micro_data["length"] = L
 
         # Values to encode phases
         pore_phase = 2 ** 16 - 1
@@ -85,12 +86,22 @@ class DataProcessingTest():
             scale=scale,
         )
 
+        electrode_mask = electrode_mask_2D(
+            self.micro_data["circles"],
+            L,
+            h_cell,
+            scale=scale,
+        )
+
         solmap = micro.create_solmap_image(
             c_rate,
             time_column=4,
         )
 
-        assert np.allclose(solmap, self.solmap_arr)
+        truth_sol_map_arr = np.copy(self.solmap_arr)
+        truth_sol_map_arr[~electrode_mask, :] = [0]
+
+        assert np.allclose(solmap, truth_sol_map_arr)
 
 
 if __name__ == "__main__":
