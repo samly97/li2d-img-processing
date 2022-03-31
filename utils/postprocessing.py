@@ -1,106 +1,21 @@
 from typing import Tuple
 
-from .numerics import get_coords_in_circle, get_inscribing_meshgrid
+from utils.numerics import get_coords_in_circle
+from utils.numerics import get_inscribing_meshgrid
+from utils.image import zoom_image
 
 import numpy as np
 import tensorflow as tf
-import matplotlib
-
-from .image import zoom_image
-
-
-def electrode_mask_exceeding_absolute_SOL_error_threshold(
-    predicted_sol: np.array,
-    ground_truth_sol: np.array,
-    electrode_mask: np.array,
-    sol_threshold: float,
-    over_predict: bool = True,
-):
-    blank_im = np.zeros_like(predicted_sol, dtype=np.float32)
-
-    error = ground_truth_sol - predicted_sol
-
-    if over_predict:
-        error = error
-    else:
-        error = -error
-
-    error = np.reshape(
-        error,
-        (np.prod(predicted_sol.shape), 1),
-    )
-
-    condition = np.all(
-        error >= sol_threshold,
-        axis=-1,
-    )
-
-    # Don't want to cause weird bugs do we
-    exceed_error_mask = np.copy(electrode_mask)
-    exceed_error_mask = np.reshape(
-        exceed_error_mask,
-        (np.prod(exceed_error_mask.shape), 1),
-    )
-
-    indices = np.where(condition)
-    exceed_error_mask[:] = False
-    exceed_error_mask[indices] = True
-
-    exceed_error_mask = np.reshape(
-        exceed_error_mask,
-        blank_im.shape,
-    )
-
-    return exceed_error_mask
-
-
-def electrode_colormap(
-    sol_map: np.array,
-    electrode_mask: np.array,
-    colormap: matplotlib.cm,
-    multiply_by_rgb: bool = True,
-) -> np.array:
-    r''' `electrode_colormap` takes in the predicted State-of-Lithiation values
-    over the electrode and then returns a pretty colormap np.array ready to be
-    saved as an image.
-
-    Inputs:
-    - sol_map: np.array | [h_cell, L, 1] | dtype = np.float32 [0, 1];
-        State-of-Lithiation values over the electrode particles.
-    - electrode_mask: np.array | [h_cell, L] | dtype = bool; from
-        utils.image.electrode_mask_2D
-
-    Outputs:
-    - ret_im: np.array | [h_cell, L, 3] | dtype = np.uint8 [0, 255]; the
-        colormap image in RGB channels. Ready to be saved as an image.
-    '''
-
-    Y, X, _ = sol_map.shape
-
-    ret_im = np.zeros(
-        (Y, X, 3), dtype=np.uint8,
-    )
-
-    sol = sol_map[electrode_mask]
-    sol = np.reshape(sol, sol.size)
-
-    rgb = colormap(sol)
-    rgb = rgb[..., :3]
-    if multiply_by_rgb:
-        rgb = (rgb * 255).astype(np.uint8)
-
-    ret_im[electrode_mask, :] = rgb
-
-    return ret_im
 
 
 def electrode_sol_map_from_predictions(
     input_dataset: tf.data.Dataset,
-    predicted_imgs: np.array,
+    predicted_imgs: np.ndarray,
+    L_electrode: int,
     norm_metadata: Tuple[int, int, int, float, int, int],
     scale: int = 10,
     grid_size: int = 1000,
-):
+) -> np.ndarray:
     r''' electrode_sol_map_from_predictions takes an electrode (in the form of
     an tf.data.Dataset) its predicted SOL output at a certain C-rate and time
     step to "patch" all the particles back into whole electrode, thus returning
@@ -118,6 +33,7 @@ def electrode_sol_map_from_predictions(
     Inputs:
     - input_dataset: tf.data.Dataset
     - predicted_imgs: np.array
+    - L_electrode: electrode length (um)
     - norm_metadata: values used to normalize the metadata during model
         training
     - scale: int; scales the resolution of the outputted image.
@@ -126,10 +42,10 @@ def electrode_sol_map_from_predictions(
         for computational efficiency.
     '''
 
-    L, h_cell, R_norm, zoom_norm, _, _ = norm_metadata
+    _, h_cell, R_norm, zoom_norm, _, _ = norm_metadata
 
     electrode = np.zeros(
-        shape=(h_cell * scale, L * scale, 1),
+        shape=(h_cell * scale, L_electrode * scale, 1),
         dtype=float,
     )
 
@@ -144,10 +60,10 @@ def electrode_sol_map_from_predictions(
         for meta in meta_array:
 
             meta = meta.numpy()
-            x = meta[0] * L
+            x = meta[0] * L_electrode
             y = meta[1] * h_cell
             R = meta[2] * R_norm
-            zoom_factor = meta[3] * zoom_norm
+            zoom_factor = meta[4] * zoom_norm
 
             predicted_img = predicted_imgs[img_idx]
             img_size, _, _ = predicted_img.shape

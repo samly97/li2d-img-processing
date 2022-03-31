@@ -3,43 +3,12 @@ from typing import Tuple, List, Dict
 import numpy as np
 import tensorflow as tf
 
-from utils.etl import ETL_2D
-from utils.etl import ETL_Functions
-from utils.etl import leave_first, ignore_key, ignore_tensor
-
-from create_ml_dataset import Microstructure_Breaker_Upper
+from etl.etl import ETL_2D
+from etl.etl import ETL_Functions
+from etl.etl import leave_first, ignore_key, ignore_tensor
+from etl.extract import Microstructure_Breaker_Upper
 
 from utils import typings
-
-
-def predict_and_rmse(
-    model,
-    dataset: tf.data.Dataset,
-    images: np.ndarray
-) -> Tuple[np.ndarray, tf.Tensor]:
-    '''
-    predict_and_rmse returns the predicted images as well as the Root Mean
-    Square Error (RMSE) of the given dataset. Should be used when user has
-    the target images, otherwise, the model's predict method is sufficient.
-
-    Batch size of input_data and label_data should be the same.
-
-    Inputs
-    -----
-    model: tensorflow/keras model
-    input_data: np.array of image (x, y, RGB)
-    label_data: np.array of image (x, y, RGB)
-
-    Returns
-    -----
-    pred_ims: array of predicted images by the model, same batch size as
-        input_data
-    rmse: RMSE value. Should have size (1,)
-    '''
-    pred_ims = model.predict(dataset)
-    rmse = tf.reduce_mean(tf.square(pred_ims - images))
-    rmse = tf.sqrt(rmse)
-    return pred_ims, rmse
 
 
 ######################################################
