@@ -1,0 +1,8 @@
+{
+  "L": 176,
+  "h_cell": 100,
+  "scale": 5,
+  "grid_size": 1000,
+  "pore_phase": 65535,
+  "solid_phase": 30000
+}

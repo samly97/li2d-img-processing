@@ -1,0 +1,19 @@
+{
+  "data_dir": "dataset",
+  "input_dir": "input_images",
+  "label_dir": "label_images",
+  "trn_split": 0.6,
+  "val_split": 0.2,
+  "dataset_data": "dataset.json",
+  "L": 176,
+  "h_cell": 100,
+  "R_max": 10,
+  "zoom_max": 9.0,
+  "c-rate": 3,
+  "time": 14400,
+  "width_wrt_radius": 3,
+  "img_size": 99,
+  "tf_img_size": 99,
+  "batch_size": 64,
+  "scale": 5
+}

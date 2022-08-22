@@ -1,0 +1,12 @@
+{
+  "h_cell": 100,
+  "scale": 5,
+  "grid_size": 1000,
+  "input_dir": "input_images",
+  "label_dir": "label_images",
+  "img_size": 99,
+  "width_wrt_radius": 3,
+  "sol_max": 65535,
+  "pore_encoding": 65535,
+  "padding_encoding": 0
+}

@@ -1,0 +1,22 @@
+{
+  "h_cell": 100,
+  "scale": 5,
+  "grid_size": 1000,
+  "header_row": 8,
+  "c_rates": ["0.25", "0.5", "1", "2", "3"],
+  "substrings_to_parse_out": [
+    ".png",
+    ".json",
+    ".ipynb",
+    ".DS_Store",
+    ".git",
+    ".gitignore",
+    ".py",
+    "_*",
+    "_old_datasets",
+    "jupyter_notebooks",
+    ".npy",
+    "test",
+    "utils"
+  ]
+}
