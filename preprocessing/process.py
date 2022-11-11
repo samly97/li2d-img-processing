@@ -23,8 +23,6 @@ from scipy.interpolate import griddata
 
 class Microstructure():
 
-    m_to_um: float = 1e6
-
     def __init__(
         self,
         csv_formatter: COMSOL_Electrochem_CSV,
@@ -112,9 +110,16 @@ class Microstructure():
                 )
 
                 # Get the solmap array
-                im = self.create_solmap_image(
+                im = _Interpolate_FEM_Data.create_solmap_image(
+                    self.experiments,
                     c_rate,
                     time_column,
+                    self.electrode_mask,
+                    self.particles,
+                    self.L,
+                    self.h_cell,
+                    self.scale,
+                    self.grid_size,
                 )
 
                 output_dir = os.path.join(
@@ -130,19 +135,46 @@ class Microstructure():
                 filename = os.path.join(output_dir, filename)
                 save_numpy_arr(im, filename)
 
+
+class _Interpolate_FEM_Data():
+
+    r'''_Interpolate_FEM_Data are static methods which are the main processing
+    steps to create a voxelization of the State-of-Lithiation maps from COMSOL
+    simulations.
+
+    A voxelized format of the FEM data is created at a particular C-rate and
+    time for a particular microstructure in `create_solmap_image`. In this
+    function, the SoL is interpolated for each particle from the associated SoL
+    values from the vertices in the FEM mesh.
+
+    Interpolation of SoL for each particle is handled by
+    `interpolate_circle_sol`.
+    '''
+
+    m_to_um: float = 1e6
+
+    @staticmethod
     def create_solmap_image(
-        self,
+        experiments: Dict[str, Experiment],
         c_rate: str,
         time_column: int,
+        electrode_mask: np.ndarray,
+        particles: List[typings.Circle_Info],
+        L: int,
+        h_cell: int,
+        scale: int,
+        grid_size: int,
     ) -> np.ndarray:
-        if c_rate not in self.experiments:
+
+        if c_rate not in experiments:
             raise KeyError(
                 "Provided discharge c-rate {} is not in ".format(c_rate) +
                 "the list of experiments"
             )
 
-        # Which discharge we're on
-        experiment = self.experiments[c_rate]
+        # `experiment` represents the FEM simulation data at the specified
+        # `c_rate`
+        experiment = experiments[c_rate]
 
         df = experiment.df
         _, num_columns = df.shape
@@ -155,8 +187,8 @@ class Microstructure():
 
         # Create a blank array to house State-of-Lithiation data from CSV files
         im = np.zeros((
-            self.h_cell * self.scale,
-            self.L * self.scale,
+            h_cell * scale,
+            L * scale,
             1))
 
         # Get SoL values located on mesh vertices from COMSOL. We will do an
@@ -169,20 +201,22 @@ class Microstructure():
             :,
         ] = avail_sol.reshape((avail_sol.size, 1))
 
-        for idx in tqdm(range(len(self.particles))):
-            circle = self.particles[idx]
+        for idx in tqdm(range(len(particles))):
+            circle = particles[idx]
 
             # Get interpolated coordinates and values
             (
                 x_inter,
                 y_inter,
                 sol_inter
-            ) = self.interpolate_circle_sol(
+            ) = _Interpolate_FEM_Data.interpolate_circle_sol(
                 circle,
                 time_column,
                 df,
                 experiment.x_col,
                 experiment.y_col,
+                scale,
+                grid_size,
             )
 
             # Fill in interpolated SoL values
@@ -192,27 +226,29 @@ class Microstructure():
                 :
             ] = sol_inter.reshape((sol_inter.size, 1))
 
-            im[~self.electrode_mask, :] = [0]
+            im[~electrode_mask, :] = [0]
 
         return im
 
+    @staticmethod
     def interpolate_circle_sol(
-            self,
-            circle: typings.Circle_Info,
-            time_column: int,
-            df: pd.DataFrame,
-            x_df_column: pd.DataFrame,
-            y_df_column: pd.DataFrame,
+        circle: typings.Circle_Info,
+        time_column: int,
+        df: pd.DataFrame,
+        x_df_column: pd.DataFrame,
+        y_df_column: pd.DataFrame,
+        scale: int,
+        grid_size: int,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        r''' Interpolates the State-of-Lithiation using the values returned in
-        the COMSOL vertices.
+        r''' `interpolate_circle_sol` interpolates the State-of-Lithiation using
+        the values returned in the COMSOL vertices.
         '''
 
-        to_pix = self.m_to_um * self.scale
+        to_pix = _Interpolate_FEM_Data.m_to_um * scale
 
         x, y, R = circle["x"], circle["y"], circle["R"]
 
-        xx, yy = get_inscribing_meshgrid(x, y, R, self.grid_size)
+        xx, yy = get_inscribing_meshgrid(x, y, R, grid_size)
         xx, yy = get_coords_in_circle(x, y, R, (xx, yy))
 
         # (x, y) values within the circle with values to interpolate from
@@ -220,7 +256,7 @@ class Microstructure():
             x_vertices,
             y_vertices,
             SoL_vertices,
-        ) = self._get_filled_vertices(
+        ) = _Interpolation_Helpers._get_filled_vertices(
             df,
             time_column,
             x, y, R,
@@ -240,7 +276,8 @@ class Microstructure():
             method='linear'
         )
 
-        x_inter, y_inter, sol_inter = self._drop_nan_from_interpolate(
+        (x_inter, y_inter,
+         sol_inter) = _Interpolation_Helpers._drop_nan_from_interpolate(
             x_df_column,
             y_df_column,
             (xx, yy),
@@ -254,8 +291,22 @@ class Microstructure():
         # return (xx, yy, SoL_mesh)
         return (x_inter, y_inter, sol_inter)
 
+
+class _Interpolation_Helpers():
+
+    r''' `_Interpolation_Helpers` has two helper functions to deal with SoL
+    values from FEM Simulation.
+
+    1. `_get_filled_vertices` returns the associated FEM verticles within a
+        particle with SoL values, as tabulated in a CSV file containing the
+        simulation data.
+    2. `_drop_nan_from_interpolate` drops all `NaN` values after interpolating
+        the SoL values from the mesh verticles to obtain SoL values for the
+        whole particle.
+    '''
+
+    @staticmethod
     def _get_filled_vertices(
-        self,
         df: pd.DataFrame,
         time_column: int,
         x: str,
@@ -283,8 +334,8 @@ class Microstructure():
 
         return (x_vertices, y_vertices, SoL_vertices)
 
+    @staticmethod
     def _drop_nan_from_interpolate(
-        self,
         x_df_column: pd.DataFrame,
         y_df_column: pd.DataFrame,
         meshgrid: typings.meshgrid,
