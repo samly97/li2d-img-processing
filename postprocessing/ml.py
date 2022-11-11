@@ -44,10 +44,10 @@ class Microstructure_to_ETL:
         micro_data: Tuple[str, int, int],
         pore_encoding: int,
         padding_encoding: int,
-        user_params: Tuple[int, int, int, int],
+        user_params: Tuple[int, int, int],
     ):
         micro_fname, cell_length, cell_height = micro_data
-        width_wrt_radius, scale, output_img_size, order = user_params
+        width_wrt_radius, scale, output_img_size = user_params
 
         # Electrode settings/parameters
         self.micro_fname = micro_fname
@@ -59,7 +59,6 @@ class Microstructure_to_ETL:
         self.width_wrt_radius = width_wrt_radius
         self.scale = scale
         self.output_img_size = output_img_size
-        self.order = order
 
         # Dataset settings
         self.tf_img_size = tf_img_size
@@ -68,7 +67,7 @@ class Microstructure_to_ETL:
 
         # This only runs during instantiation. Extracting images is
         # computationally expensive.
-        arr_imgs, arr_meta = self._prep_micro_data(
+        arr_imgs, arr_meta = _Create_ETL_Helpers.prep_micro_data(
             self.circle_data,
             micro_data,
             user_params,
@@ -84,8 +83,12 @@ class Microstructure_to_ETL:
         c_rate: float,
         time: int,
     ) -> tf.data.Dataset:
-        arr_meta = self._set_rate_and_time(c_rate, time, self.arr_meta)
-        hash_meta = self._meta_arr_to_hash(arr_meta)
+        arr_meta = _Create_ETL_Helpers.set_rate_and_time(
+            c_rate,
+            time,
+            self.arr_meta
+        )
+        hash_meta = _Create_ETL_Helpers.meta_arr_to_hash(arr_meta)
 
         process_input_fns = [
             ignore_tensor(leave_first(
@@ -93,7 +96,6 @@ class Microstructure_to_ETL:
                 self.arr_imgs,
                 self.output_img_size,
                 self.tf_img_size,
-                self.order,
             )),
             ignore_key(leave_first(
                 tf.math.divide,
@@ -120,11 +122,14 @@ class Microstructure_to_ETL:
 
         return dataset_loader
 
-    def _prep_micro_data(
-        self,
+
+class _Create_ETL_Helpers():
+
+    @staticmethod
+    def prep_micro_data(
         circle_data: List[typings.Circle_Info],
         micro_data: Tuple[str, int, int],
-        user_params: Tuple[int, int, int, int],
+        user_params: Tuple[int, int, int],
         pore_encoding: int,
         padding_encoding: int,
     ) -> Tuple[np.ndarray, List[typings.Metadata]]:
@@ -132,7 +137,7 @@ class Microstructure_to_ETL:
         constant "box radius" as well as preparing the metadata.
         '''
         micro_fname, cell_length, cell_height = micro_data
-        width_wrt_radius, scale, output_img_size, order = user_params
+        width_wrt_radius, scale, output_img_size = user_params
 
         mbu = Microstructure_Breaker_Upper(
             "",
@@ -154,8 +159,8 @@ class Microstructure_to_ETL:
 
         return arr_imgs, arr_meta
 
-    def _set_rate_and_time(
-        self,
+    @staticmethod
+    def set_rate_and_time(
         c_rate: float,
         time: float,
         arr_meta: List[typings.Metadata],
@@ -181,14 +186,18 @@ class Microstructure_to_ETL:
 
         return ret
 
-    def _meta_arr_to_hash(
-        self,
+    @staticmethod
+    def meta_arr_to_hash(
         arr_meta: List[typings.Metadata],
     ) -> Dict[str, typings.Metadata]:
         ret = {}
         for idx, hash in enumerate(arr_meta):
             ret[str(idx)] = hash
         return ret
+
+######################################################
+# PREDICT "SOLMAP" FROM MACHINE LEARNING PREDICTIONS #
+######################################################
 
 
 def electrode_sol_map_from_predictions(
