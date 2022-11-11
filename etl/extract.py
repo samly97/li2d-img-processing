@@ -52,11 +52,27 @@ class SOLmap():
 
         return (c_rate, time)
 
+##########################################################################
+# BREAK ELECTRODE NUMPY ARRAYS INTO SUITABLE FORMAT FOR MACHINE LEARNING #
+##########################################################################
+
 
 class Microstructure_Breaker_Upper():
-    # Seems like we could extend the `Microstructure` class from the
-    # `create_col_map.py` file... I could see how there's similarities... food
-    # for thought.
+
+    r''' `Microstructure_Breaker_Upper` takes NumPy arrays which represents a
+    voxelated representative of an electrode microstructure and a series of the
+    voxelated SoLmaps genereated from `create_col_map.py` using the
+    `Microstructure` class.
+
+    Then, these data are processed to create input and output images amenable
+    for training as well as "stand-alone" usage when using the trained Neural
+    Network for predictions.
+
+    Used in:
+        - `create_ml_dataset.py` uses `ml_data_from_all_solmaps`
+        - `postprocessing/ml.py` uses `extract_particles_from_microstructure`
+    '''
+
     def __init__(
         self,
         micro_num: str,
@@ -119,15 +135,31 @@ class Microstructure_Breaker_Upper():
         label_dir: str,
         pic_num: int,
     ) -> Tuple[int, Dict[str, typings.Metadata]]:
+        r''' `ml_data_from_all_solmaps` extracts the input and output images as
+        well as associated metadata, which is an intermediate step for creating
+        the dataloader.
+
+        This method is the format of data expected for training the Neural
+        Network.
+        '''
+
         ret_dict: Dict[str, typings.Metadata] = {}
 
         for solmap in tqdm(self.sol_maps):
             for particle in self.particles:
-                input_im, label_im, metadata = self.ml_data_from_particles(
-                    particle,
-                    solmap,
+
+                (input_im,
+                 label_im,
+                 metadata
+                 ) = _Extraction_Functionality.process_ml_data(
+                    True,
+                    self.micro_num, self.L,
+                    particle, self.micro_arr, solmap,
                     width_wrt_radius,
                     output_img_size,
+                    self.meshgrid,
+                    self.pore_encoding, self.padding_encoding, self.sol_max,
+                    self.scale,
                 )
 
                 # Insert metadata
@@ -152,57 +184,17 @@ class Microstructure_Breaker_Upper():
 
         return pic_num, ret_dict
 
-    def ml_data_from_particles(
-        self,
-        particle: typings.Circle_Info,
-        solmap: SOLmap,
-        width_wrt_radius: int,
-        output_img_size: int,
-    ) -> Tuple[np.ndarray, np.ndarray, typings.Metadata]:
-        R = particle["R"]
-        # Size image according to radius factor
-        pore_box_radius = ceil(float(R) * self.scale * width_wrt_radius)
-        label_box_radius = ceil(float(R) * self.scale)
-
-        input_im, label_im = self.extract_input_and_cmap_im(
-            pore_box_radius,
-            label_box_radius,
-            solmap,
-            particle,
-        )
-        label_im = self.scale_sol(label_im)
-
-        # Measure local porosity
-        porosity = measure_porosity(
-            input_im,
-            np.array(self.pore_encoding),
-            np.array(self.padding_encoding),
-        )
-
-        input_im, _ = zoom_image(input_im, output_img_size, order=0)
-        label_im, zoom_factor = zoom_image(label_im, output_img_size, order=0)
-
-        metadata: typings.Metadata = {
-            "micro": self.micro_num,
-            "x": float(particle["x"]) / self.L,
-            "y": particle["y"],
-            "R": particle["R"],
-            "L": self.L,
-            "zoom_factor": zoom_factor,
-            "c_rate": solmap.c_rate,
-            "time": solmap.time,
-            "dist_from_sep": float(particle["x"])/self.L,
-            "porosity": porosity,
-        }
-
-        return input_im, label_im, metadata
-
     def extract_particles_from_microstructure(
         self,
         width_wrt_radius: int,
         output_img_size: int,
-        order: int,
     ) -> Tuple[np.ndarray, List[typings.Metadata]]:
+        r''' `extract_particles_from_microstructure` extracts the input image
+        and the metadata to create the dataloader. This is the expected format
+        of data when using the trained Neural Network as a stand-alone
+        evaluator.
+        '''
+
         extracted_ims = np.zeros(
             (len(self.particles),
              output_img_size,
@@ -214,11 +206,16 @@ class Microstructure_Breaker_Upper():
         arr_meta = []
 
         for idx, particle in tqdm(enumerate(self.particles)):
-            circ_im, metadata = self._extract_particle_from_microstructures(
-                particle,
+
+            (circ_im, _, metadata) = _Extraction_Functionality.process_ml_data(
+                False,
+                "-1", self.L,
+                particle, self.micro_arr, self.micro_arr,
                 width_wrt_radius,
                 output_img_size,
-                order,
+                self.meshgrid,
+                self.pore_encoding, self.padding_encoding, self.sol_max,
+                self.scale,
             )
 
             extracted_ims[idx] = circ_im
@@ -226,123 +223,161 @@ class Microstructure_Breaker_Upper():
 
         return extracted_ims, arr_meta
 
-    def _extract_particle_from_microstructures(
-        self,
+
+class _Extraction_Functionality():
+
+    r''' `_Extraction_Functionality` represents the key functionality in going
+    from voxelized microstructure and State-of-Lithiation-map arrays into
+    small, isolated images and metadata suitable for usage in a Machine
+    Learning format.
+
+    The steps are as follows:
+    1.  `extract_input_and_cmap_im` is used to extract centered particles from
+        the voxelized representations of the electrode and the SoLmap.
+    2. `process_ml_data` is the main step in this extraction algorithm. The
+        inputs to the Neural Network are created (input image and metadata) as
+        well as the output image.
+
+        This functionality is shared between training and stand-alone
+        evaluation. In the latter, the output image is not needed, and setting
+        `c_rate` and `time` in the metadata are handled separately in
+        `postprocessing/ml.py`.
+    '''
+
+    @staticmethod
+    def process_ml_data(
+        for_training: bool,
+        micro_num: str,
+        L: int,
         particle: typings.Circle_Info,
+        micro_arr: np.ndarray,
+        solmap: SOLmap,
         width_wrt_radius: int,
         output_img_size: int,
-        order: int,
-    ) -> Tuple[np.ndarray, typings.Metadata]:
+        meshgrid: typings.meshgrid,
+        pore_encoding: int,
+        padding_encoding: int,
+        sol_max: int,
+        scale: int,
+    ) -> Tuple[np.ndarray, np.ndarray, typings.Metadata]:
+
         R = particle["R"]
         # Size image according to radius factor
-        pore_box_radius = ceil(float(R) * self.scale * width_wrt_radius)
-        label_box_radius = ceil(float(R) * self.scale)
+        pore_box_radius = ceil(float(R) * scale * width_wrt_radius)
+        label_box_radius = ceil(float(R) * scale)
 
-        micro_arr = np.copy(self.micro_arr)
-        dummy = np.copy(micro_arr)
-
-        circ_im = extract_input(
+        (input_im,
+         label_im) = _Extraction_Functionality.extract_input_and_cmap_im(
             pore_box_radius,
-            micro_arr,
-            (particle['x'], particle['y'], ""),
-            self.scale,
-            self.padding_encoding,
-        )
-        dummy_im = extract_input(
             label_box_radius,
-            dummy,
-            (particle['x'], particle['y'], ""),
-            self.scale,
-            self.padding_encoding,
+            micro_arr,
+            solmap,
+            particle,
+            meshgrid,
+            padding_encoding,
+            scale,
         )
+        label_im = _Extraction_Helpers.scale_sol(label_im, sol_max)
 
+        # Measure local porosity
         porosity = measure_porosity(
-            circ_im,
-            np.array(self.pore_encoding),
-            np.array(self.padding_encoding),
+            input_im,
+            np.array(pore_encoding),
+            np.array(padding_encoding),
         )
 
-        zoomed_circ_im, _ = zoom_image(
-            circ_im,
-            output_img_size,
-            order=order,
-        )
-        _, zoom_factor = zoom_image(
-            dummy_im,
-            output_img_size,
-            order=order,
-        )
+        input_im, _ = zoom_image(input_im, output_img_size, order=0)
+        label_im, zoom_factor = zoom_image(label_im, output_img_size, order=0)
 
-        circ_meta: typings.Metadata = {
-            'micro': '-1',
-            'x': float(particle["x"]) / self.L,
-            'y': particle["y"],
-            'R': particle["R"],
-            'L': self.L,
-            'zoom_factor': zoom_factor,
-            'c_rate': '-1',
-            'time': '-1',
-            'porosity': porosity,
-            'dist_from_sep': float(particle["x"]) / self.L,
+        metadata: typings.Metadata = {
+            "micro": micro_num,
+            "x": float(particle["x"]) / L,
+            "y": particle["y"],
+            "R": particle["R"],
+            "L": L,
+            "zoom_factor": zoom_factor,
+            "c_rate": solmap.c_rate,
+            "time": solmap.time,
+            "dist_from_sep": float(particle["x"])/L,
+            "porosity": porosity,
         }
 
-        return zoomed_circ_im, circ_meta
+        if not for_training:
+            metadata["micro"] = "-1"
+            metadata["c_rate"] = "-1"
+            metadata["time"] = "-1"
 
+        return input_im, label_im, metadata
+
+    @staticmethod
     def extract_input_and_cmap_im(
-        self,
         pore_box_radius: int,
         label_box_radius: int,
+        micro_arr: np.ndarray,
         solmap: SOLmap,
         particle: typings.Circle_Info,
+        meshgrid: typings.meshgrid,
+        padding_encoding: int,
+        scale: int,
     ) -> Tuple[np.ndarray, np.ndarray]:
         r''' Gets both the input (blank) and labelled (with color) images to
         form machine learning data.
 
         Returns: (input_im, labelled_im)
         '''
-        micro_im = np.copy(self.micro_arr)
-        sol_values = self._get_sol_circle(
+        micro_im = np.copy(micro_arr)
+        sol_values = _Extraction_Helpers.get_sol_circle(
             solmap,
             particle,
+            meshgrid,
         )
 
         input_im = extract_input(
             pore_box_radius,
             micro_im,
             (particle['x'], particle['y'], ""),
-            self.scale,
-            self.padding_encoding,
+            scale,
+            padding_encoding,
         )
         label_im = extract_input(
             label_box_radius,
             sol_values,
             (particle['x'], particle['y'], ""),
-            self.scale,
+            scale,
             padding=0,
         )
 
         return input_im, label_im
 
+
+class _Extraction_Helpers():
+
+    @staticmethod
     def scale_sol(
-        self,
-        label_im: np.ndarray
+        label_im: np.ndarray,
+        sol_max: int,
     ) -> np.ndarray:
         solid_phase = np.array(np.where(
             np.all(label_im != 0, axis=-1),
         ))
         ret_im = np.zeros_like(label_im, dtype=np.uint16)
         ret_im[solid_phase, :] = np.floor(
-            label_im[solid_phase, :] * self.sol_max,
+            label_im[solid_phase, :] * sol_max,
         )
         return ret_im
 
-    def _get_sol_circle(
-        self,
+    @staticmethod
+    def get_sol_circle(
         solmap: SOLmap,
         particle: typings.Circle_Info,
+        meshgrid: typings.meshgrid,
     ) -> np.ndarray:
+        r''' `get_sol_circle` retrieves a voxelated format of a SoLmap, where
+        SoL values are superimposed on active particles. This returns SoL
+        values on the same SoLmap, but with all other particles zeroed out.'''
+
         ret_im = np.copy(solmap.solmap_arr)
-        xx, yy = self.meshgrid
+        xx, yy = meshgrid
 
         x = float(particle["x"])
         y = float(particle["y"])
