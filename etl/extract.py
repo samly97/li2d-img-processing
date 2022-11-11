@@ -276,8 +276,11 @@ class _Extraction_Functionality():
             meshgrid,
             padding_encoding,
             scale,
+            for_training=for_training,
         )
-        label_im = _Extraction_Helpers.scale_sol(label_im, sol_max)
+
+        if for_training:
+            label_im = _Extraction_Helpers.scale_sol(label_im, sol_max)
 
         # Measure local porosity
         porosity = measure_porosity(
@@ -296,16 +299,15 @@ class _Extraction_Functionality():
             "R": particle["R"],
             "L": L,
             "zoom_factor": zoom_factor,
-            "c_rate": solmap.c_rate,
-            "time": solmap.time,
+            "c_rate": "-1",
+            "time": "-1",
             "dist_from_sep": float(particle["x"])/L,
             "porosity": porosity,
         }
 
-        if not for_training:
-            metadata["micro"] = "-1"
-            metadata["c_rate"] = "-1"
-            metadata["time"] = "-1"
+        if for_training:
+            metadata["c_rate"] = solmap.c_rate
+            metadata["time"] = solmap.time
 
         return input_im, label_im, metadata
 
@@ -319,6 +321,7 @@ class _Extraction_Functionality():
         meshgrid: typings.meshgrid,
         padding_encoding: int,
         scale: int,
+        for_training: bool = True,
     ) -> Tuple[np.ndarray, np.ndarray]:
         r''' Gets both the input (blank) and labelled (with color) images to
         form machine learning data.
@@ -326,11 +329,13 @@ class _Extraction_Functionality():
         Returns: (input_im, labelled_im)
         '''
         micro_im = np.copy(micro_arr)
-        sol_values = _Extraction_Helpers.get_sol_circle(
-            solmap,
-            particle,
-            meshgrid,
-        )
+
+        if for_training:
+            sol_values = _Extraction_Helpers.get_sol_circle(
+                solmap,
+                particle,
+                meshgrid,
+            )
 
         input_im = extract_input(
             pore_box_radius,
@@ -341,7 +346,7 @@ class _Extraction_Functionality():
         )
         label_im = extract_input(
             label_box_radius,
-            sol_values,
+            sol_values if for_training else micro_im,
             (particle['x'], particle['y'], ""),
             scale,
             padding=0,

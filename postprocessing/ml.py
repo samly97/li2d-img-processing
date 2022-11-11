@@ -150,7 +150,6 @@ class Microstructure_to_ETL:
         arr_imgs, arr_meta = mbu.extract_particles_from_microstructure(
             width_wrt_radius,
             output_img_size,
-            order,
         )
 
         return arr_imgs, arr_meta
