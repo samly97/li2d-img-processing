@@ -4,7 +4,11 @@ from typing import List, Dict, Tuple, Callable, Union
 
 import tensorflow as tf
 import numpy as np
+
 from scipy.ndimage import zoom
+from scipy import ndimage as ndi
+from skimage.segmentation import watershed
+import porespy as ps
 
 from utils import typings
 
@@ -57,6 +61,68 @@ class ETL_Functions():
             tf.float32,
         )
         return img
+
+    @ staticmethod
+    def get_mask(
+        idx_num: int,
+        inp_img: tf.types.experimental.TensorLike,
+        tf_img_size: int,
+        encoding: float = 1.0,
+    ):
+        center_loc = tf_img_size // 2
+
+        # Threshold input image to boolean where `True` is the solid phase. The
+        # solid phase is taken to be less than the pore encoding as greater
+        # than the padding encoding of `0.0`.
+        cond1 = tf.math.less(inp_img, encoding)
+        cond2 = tf.math.greater(inp_img, 0.0)
+
+        thres = tf.math.logical_and(cond1, cond2)
+        thres = tf.cast(thres, tf.bool)
+
+        # Use the EDT on the solid phase with `True` values
+        distance = tf.py_function(
+            ndi.distance_transform_edt, [thres], tf.float32)
+
+        # Return array where `True` entries represent the peaks
+        peaks = tf.numpy_function(
+            ps.filters.find_peaks, [distance], tf.bool,
+        )
+
+        # Label the `peaks` in an array with unique integer numbers for the
+        # peaks
+        markers, _ = tf.numpy_function(
+            ndi.label, [peaks], [tf.int32, tf.int64],
+        )
+
+        # Take the negative of distance since watershed fills "basins"
+        distance = tf.math.scalar_mul(-1., distance)
+        # Watershed segmentation
+        labels = tf.numpy_function(
+            watershed, [distance, markers], tf.int32,
+        )
+
+        # Find label of the center particle and then do a boolean
+        # for the center image
+        center_lab = labels[center_loc, center_loc]
+
+        # Get indices in the array which correspond to labels for the center
+        # particle
+        label_indices = tf.where(
+            tf.math.equal(labels, center_lab)
+        )
+
+        # Update a boolean image where `True` correspond to the watershed
+        # region for the particle of interest
+        shape = tf.shape(label_indices)
+        update = tf.ones(shape[0], tf.bool)
+
+        mask_im = tf.zeros_like(thres, tf.bool)
+        mask_im = tf.tensor_scatter_nd_update(
+            mask_im, label_indices, update,
+        )
+
+        return tf.math.logical_and(mask_im, thres)
 
     @ staticmethod
     def format_metadata(
@@ -139,16 +205,20 @@ class ETL_2D():
     ) -> Tuple[
             tf.types.experimental.TensorLike,
             tf.types.experimental.TensorLike,
+            tf.types.experimental.TensorLike,
     ]:
         for fn in self.input_fns:
             input_im = fn(arr_idx, input_im)
 
+        mask_im = ETL_Functions.get_mask(
+            arr_idx, input_im, 300,
+        )
         metadata = ETL_Functions.format_metadata(
             arr_idx,
             self.metadata_lookup,
         )
 
-        return input_im, metadata
+        return input_im, mask_im, metadata
 
     def _process_output_path(
         self,
