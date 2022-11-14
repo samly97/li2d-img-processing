@@ -264,7 +264,7 @@ class _Extraction_Functionality():
         R = particle["R"]
         # Size image according to radius factor
         pore_box_radius = ceil(float(R) * scale * width_wrt_radius)
-        label_box_radius = ceil(float(R) * scale)
+        label_box_radius = ceil(float(R) * scale * width_wrt_radius)
 
         (input_im,
          label_im) = _Extraction_Functionality.extract_input_and_cmap_im(
