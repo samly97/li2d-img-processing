@@ -157,12 +157,14 @@ class ETL_2D():
         metadata_norm: typings.Metadata_Normalizations,
         criteria_arr: List[int],
         batch_size: int,
+        tf_img_size: int,
         process_input_fns: List[typings.ETL_fn],
         process_target_fns: List[typings.ETL_fn],
     ):
         self.AUTOTUNE = tf.data.AUTOTUNE
         self.metadata_norm = metadata_norm
         self.batch_size = batch_size
+        self.tf_img_size = tf_img_size
 
         self.metadata_lookup = self.get_static_hash_table(
             metadata,
@@ -211,7 +213,7 @@ class ETL_2D():
             input_im = fn(arr_idx, input_im)
 
         mask_im = ETL_Functions.get_mask(
-            arr_idx, input_im, 300,
+            arr_idx, input_im, self.tf_img_size,
         )
         metadata = ETL_Functions.format_metadata(
             arr_idx,

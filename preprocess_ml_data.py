@@ -131,6 +131,7 @@ def preprocess_ml_data() -> Tuple[
             norm_metadata,
             criteria_arr,
             settings["batch_size"],
+            settings["tf_img_size"],
             process_input_fns,
             process_target_fns,
         )

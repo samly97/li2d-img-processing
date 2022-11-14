@@ -115,6 +115,7 @@ class Microstructure_to_ETL:
             self.norm_metadata,
             [i for i in range(len(self.circle_data))],
             self.batch_size,
+            self.tf_img_size,
             process_input_fns,
             process_target_fns,
         )
