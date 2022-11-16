@@ -91,7 +91,7 @@ class ETL_Functions():
 
         # Label the `peaks` in an array with unique integer numbers for the
         # peaks
-        markers, _ = tf.numpy_function(
+        markers, _ = tf.py_function(
             ndi.label, [peaks], [tf.int32, tf.int64],
         )
 
