@@ -25,7 +25,7 @@ class ETL_Functions():
         order: int = 0,
     ) -> tf.types.experimental.TensorLike:
         path = tf.strings.join(
-            [os.getcwd(), "/", data_dir, "/", img_dir]
+            [data_dir, "/", img_dir]
         )
         fname = tf.strings.join(
             [path, "/", tf.strings.as_string(pic_num), ".npy"])
