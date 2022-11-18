@@ -1,5 +1,3 @@
-
-import os
 from typing import List, Dict, Tuple, Callable, Union
 
 import tensorflow as tf
@@ -61,6 +59,27 @@ class ETL_Functions():
             tf.float32,
         )
         return img
+
+    @ staticmethod
+    def dist_transform_input(
+        idx_num: int,
+        inp_img: tf.types.experimental.TensorLike,
+    ):
+        # Solid and paddings
+        thres = tf.math.less(inp_img, 1.0)
+        distance = tf.py_function(
+            ndi.distance_transform_edt, [thres], tf.float32
+        )
+
+        # Normalize Distance Transform
+        dist_max = tf.math.reduce_max(distance)
+
+        distance = tf.cast(distance, tf.float32)
+        dist_max = tf.cast(dist_max, tf.float32)
+
+        distance = tf.math.scalar_mul(1 / dist_max, distance)
+
+        return distance
 
     @ staticmethod
     def get_mask(
@@ -212,9 +231,16 @@ class ETL_2D():
         for fn in self.input_fns:
             input_im = fn(arr_idx, input_im)
 
+        # Use the "raw input" to create a mask for the center particle of
+        # interest. Order matters (for `input_im`)
         mask_im = ETL_Functions.get_mask(
             arr_idx, input_im, self.tf_img_size,
         )
+
+        # Now create a normalized distance transform on the particle phase to
+        # use as the input image to the Neural Network.
+        input_im = ETL_Functions.dist_transform_input(arr_idx, input_im)
+
         metadata = ETL_Functions.format_metadata(
             arr_idx,
             self.metadata_lookup,
