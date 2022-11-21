@@ -2,7 +2,7 @@ import os
 from typing import Dict, List, Tuple
 
 import numpy as np
-from random import shuffle
+from random import shuffle, seed
 from math import ceil
 import tensorflow as tf
 
@@ -29,7 +29,11 @@ def parse_raw_data(
 
 def shuffle_dataset(
     pic_num: List[int],
+    random_seed: int = -1,
 ) -> List[int]:
+
+    if random_seed != -1:
+        seed(random_seed)
 
     # Shuffle list
     list_idx = list(range(len(pic_num)))
@@ -55,7 +59,10 @@ def get_split_indices(
     return ((0, trn_idx), (trn_idx, val_idx), (val_idx, test_idx))
 
 
-def preprocess_ml_data() -> Tuple[
+def preprocess_ml_data(
+    shuffle: bool = True,
+    random_seed: int = -1,
+) -> Tuple[
         tf.data.Dataset,
         tf.data.Dataset,
         tf.data.Dataset]:
@@ -75,14 +82,16 @@ def preprocess_ml_data() -> Tuple[
 
     dataset_json: Dict[str, typings.Metadata] = load_json(
         settings["dataset_data"],
-        path=os.path.join(os.getcwd(), settings["data_dir"]),
+        path=os.path.join(settings["data_dir"]),
     )
 
     pic_num = parse_raw_data(
         settings["data_dir"],
         settings["input_dir"]
     )
-    pic_num = shuffle_dataset(pic_num)
+
+    if shuffle:
+        pic_num = shuffle_dataset(pic_num, random_seed=random_seed)
 
     trn_idx, val_idx, test_idx = get_split_indices(
         settings["trn_split"],
