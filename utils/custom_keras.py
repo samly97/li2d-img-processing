@@ -15,7 +15,7 @@ class Image_Processing_Helpers():
         )
 
         boundary_mask = tf.math.logical_and(dilated_not_mask, mask)
-        return boundary_mask
+        return boundary_mask, dilated_not_mask
 
     @staticmethod
     def _binary_dilation_tensors(tensors):
@@ -118,7 +118,8 @@ class Mask_MSE(tf.keras.losses.Loss):
         # Filter for outliers on the boundaries - we presume that there may be
         # artifacts due to the zooming process during data processing of ETL
         # data
-        boundary_mask = Image_Processing_Helpers.get_boundaries(mask)
+        (boundary_mask,
+         dilated_not_mask) = Image_Processing_Helpers.get_boundaries(mask)
         boundary_mask.set_shape([None, self.img_size, self.img_size, 1])
         boundary_values = tf.ragged.boolean_mask(y_true, boundary_mask)
         (
@@ -146,13 +147,14 @@ class Mask_MSE(tf.keras.losses.Loss):
         )
 
         # Remove the presumed outliers from the particle mask
-        boundary_outlier_mask = tf.cast(boundary_outlier_mask, tf.float32)
-        mask = tf.cast(mask, tf.float32)
+        eroded_mask = tf.math.logical_not(dilated_not_mask)
 
-        mask = tf.math.multiply(mask, boundary_outlier_mask)
+        # Ignore background pixels
+        final_mask = tf.math.logical_or(eroded_mask, boundary_outlier_mask)
+        final_mask.set_shape([None, self.img_size, self.img_size, 1])
 
-        y_pred = tf.math.multiply(y_pred, mask)
-        y_true = tf.math.multiply(y_true, mask)
+        y_pred = tf.boolean_mask(y_pred, final_mask)
+        y_true = tf.boolean_mask(y_true, final_mask)
 
         return tf.math.reduce_mean(tf.square(y_pred - y_true))
 
