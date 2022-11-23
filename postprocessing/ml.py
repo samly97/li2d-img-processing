@@ -82,6 +82,7 @@ class Microstructure_to_ETL:
         self,
         c_rate: float,
         time: int,
+        cache=None,
     ) -> tf.data.Dataset:
         arr_meta = _Create_ETL_Helpers.set_rate_and_time(
             c_rate,
@@ -119,9 +120,24 @@ class Microstructure_to_ETL:
             process_input_fns,
             process_target_fns,
         )
-        dataset_loader = etl.get_ml_dataset()
 
-        return dataset_loader
+        if cache is None:
+            dataset_loader = etl.get_ml_dataset()
+
+            inputs = dataset_loader.map(lambda ins, _: ins)
+            targets = dataset_loader.map(lambda _, targets: targets)
+
+            edt_ims = inputs.map(lambda edt, mask, _: edt)
+            mask_ims = inputs.map(lambda edt, mask, _: mask)
+
+            cache = {"edt": edt_ims, "mask": mask_ims, "target": targets}
+
+        else:
+            dataset_loader = etl.amend_metadata_to_loader(
+                cache["edt"], cache["mask"], cache["target"],
+            )
+
+        return dataset_loader, cache
 
 
 class _Create_ETL_Helpers():

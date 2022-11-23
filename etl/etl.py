@@ -167,6 +167,18 @@ class ETL_Functions():
         blank_im = tf.convert_to_tensor(blank_im)
         return blank_im
 
+    @ staticmethod
+    def configure_for_performance(
+        ds: tf.data.Dataset,
+        batch_size: int,
+        AUTOTUNE,
+    ):
+        # https://www.tensorflow.org/tutorials/load_data/images#using_tfdata_for_finer_control
+        ds = ds.cache()
+        ds = ds.batch(batch_size)
+        ds = ds.prefetch(buffer_size=AUTOTUNE)
+        return ds
+
 
 class ETL_2D():
 
@@ -201,22 +213,37 @@ class ETL_2D():
 
     def get_ml_dataset(self) -> tf.data.Dataset:
 
-        def configure_for_performance(ds):
-            # https://www.tensorflow.org/tutorials/load_data/images#using_tfdata_for_finer_control
-            ds = ds.cache()
-            ds = ds.batch(self.batch_size)
-            ds = ds.prefetch(buffer_size=self.AUTOTUNE)
-            return ds
-
         inp_ds = self.starting_ds.map(
             self._process_input_path, num_parallel_calls=self.AUTOTUNE)
         out_ds = self.starting_ds.map(
             self._process_output_path, num_parallel_calls=self.AUTOTUNE)
 
-        inp_ds = configure_for_performance(inp_ds)
-        out_ds = configure_for_performance(out_ds)
+        inp_ds = ETL_Functions.configure_for_performance(
+            inp_ds, self.batch_size, self.AUTOTUNE)
+        out_ds = ETL_Functions.configure_for_performance(
+            out_ds, self.batch_size, self.AUTOTUNE)
 
         ret_ds = tf.data.Dataset.zip((inp_ds, out_ds))
+        return ret_ds
+
+    def amend_metadata_to_loader(
+        self,
+        input_ds: tf.data.Dataset,
+        mask_ds: tf.data.Dataset,
+        target_ds: tf.data.Dataset,
+    ):
+
+        meta_ds = self.starting_ds.map(
+            lambda arr_idx: ETL_Functions.format_metadata(
+                arr_idx, self.metadata_lookup),
+            num_parallel_calls=self.AUTOTUNE,
+        )
+        meta_ds = ETL_Functions.configure_for_performance(
+            meta_ds, self.batch_size, self.AUTOTUNE)
+
+        ret_ds = tf.data.Dataset.zip(
+            ((input_ds, mask_ds, meta_ds), target_ds)
+        )
         return ret_ds
 
     def _process_input_path(
