@@ -21,6 +21,95 @@ import pandas as pd
 from scipy.interpolate import griddata
 
 
+class Microstructure_Backdoor():
+
+    def __init__(
+        self,
+        csv_formatter: COMSOL_Electrochem_CSV,
+        micro_path: str,
+        microstructure: np.ndarray,
+        L: int,
+        h_cell: int,
+        c_rate: str,
+        time: str,
+        particles: List[typings.Circle_Info],
+        grid_size: int = 1000,
+        scale: int = 10,
+    ):
+        self.csv_formatter = csv_formatter
+        self.micro_path = micro_path
+
+        self.microstructure = microstructure
+
+        self.L = L
+        self.h_cell = h_cell
+        self.particles = particles
+
+        self.c_rate = c_rate
+        self.time = time
+
+        self.grid_size = grid_size
+        self.scale = scale
+
+        # Get experiment (csv file of micro under `c-rate` discharge)
+        self.experiment = self._get_experiment()
+        self.time_column = self._get_time_col()
+
+    def _get_experiment(self) -> Dict[str, Experiment]:
+        dataframe = self.csv_formatter.read_csv_into_pandas(
+            self.micro_path,
+            self.c_rate,
+        )
+        experiment = Experiment(
+            self.c_rate,
+            dataframe,
+            scale=self.scale,
+        )
+        return {self.c_rate: experiment}
+
+    def _get_time_col(self):
+
+        dataframe = self.experiment[self.c_rate].df
+        _, num_columns = dataframe.shape
+        time_start = self.csv_formatter.data_start_column
+
+        time_columns = [col_num for col_num in range(time_start, num_columns)]
+        times_in_csv = [self.csv_formatter.get_timestep(
+            dataframe, col_num) for col_num in time_columns]
+
+        time_match = [self.time == time for time in times_in_csv]
+
+        idx = 0
+        for i in range(len(time_match)):
+            # If the time column matches the specified time, then return the
+            # corresponding column number in the dataframe
+            if time_match[idx]:
+                return time_columns[idx]
+
+            idx += 1
+
+    def get_solmap(self) -> np.ndarray:
+        electrode_mask = np.ones(
+            (self.h_cell * self.scale, self.L * self.scale),
+            dtype=bool,
+        )
+
+        # Get the solmap array
+        solmap = _Interpolate_FEM_Data.create_solmap_image(
+            self.experiment,
+            self.c_rate,
+            self.time_column,
+            electrode_mask,
+            self.particles,
+            self.L,
+            self.h_cell,
+            self.scale,
+            self.grid_size,
+        )
+
+        return solmap
+
+
 class Microstructure():
 
     def __init__(

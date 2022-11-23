@@ -16,11 +16,14 @@ from math import ceil
 
 class SOLmap():
 
-    def __init__(self, filepath: str):
-        tup = self._get_exp_params(filepath)
-        self.c_rate = tup[0]
-        self.time = tup[1]
-        self.solmap_arr = np.load(filepath)
+    def __init__(self, filepath: str, solmap_arr: np.ndarray = None):
+        if solmap_arr is None:
+            tup = self._get_exp_params(filepath)
+            self.c_rate = tup[0]
+            self.time = tup[1]
+            self.solmap_arr = np.load(filepath)
+        else:
+            self.solmap_arr = solmap_arr
 
     def __str__(self):
         return (
