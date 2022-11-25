@@ -46,3 +46,10 @@ class Metadata_Normalizations(TypedDict):
     zoom_norm: float
     c_rate_norm: float
     time_norm: int
+
+
+META_INDICES = {
+    "x": 0,
+    "y": 1,
+    "zoom_factor": 4,
+}
