@@ -86,6 +86,7 @@ class ETL_Functions():
         idx_num: int,
         inp_img: tf.types.experimental.TensorLike,
         tf_img_size: int,
+        width_wrt_radius: float = 3,
         encoding: float = 1.0,
     ):
         center_loc = tf_img_size // 2
@@ -140,6 +141,29 @@ class ETL_Functions():
         mask_im = tf.tensor_scatter_nd_update(
             mask_im, label_indices, update,
         )
+
+        perturb = tf.cast(
+            tf.math.ceil(tf_img_size / width_wrt_radius / 8), tf.int32
+        )
+
+        def update_mask_perturb(y, x, ret_im):
+            # `y` and `x` are +1 or -1
+            label = tf.where(
+                tf.math.equal(labels, labels[
+                    center_loc + y * perturb,
+                    center_loc + x * perturb,
+                ])
+            )
+            update = tf.ones(tf.shape(label)[0], tf.bool)
+            ret_im = tf.tensor_scatter_nd_update(
+                ret_im, label, update,
+            )
+            return ret_im
+
+        mask_im = update_mask_perturb(-1, -1, mask_im)
+        mask_im = update_mask_perturb(-1, 1, mask_im)
+        mask_im = update_mask_perturb(1, -1, mask_im)
+        mask_im = update_mask_perturb(1, 1, mask_im)
 
         return tf.math.logical_and(mask_im, thres)
 
