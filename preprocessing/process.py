@@ -8,8 +8,6 @@ from utils.numerics import get_inscribing_meshgrid
 from utils.numerics import get_inscribing_coords
 from utils.numerics import get_coords_in_circle
 
-from utils.image import electrode_mask_2D
-
 from preprocessing.data import Experiment
 from preprocessing.data import COMSOL_Electrochem_CSV
 
@@ -149,11 +147,9 @@ class Microstructure():
             )
 
         self.experiments: Dict[str, Experiment] = self._get_experiments()
-        self.electrode_mask = electrode_mask_2D(
-            self.particles,
-            self.L,
-            self.h_cell,
-            scale=self.scale,
+        self.electrode_mask = np.ones(
+            (self.h_cell * self.scale, self.L * self.scale),
+            dtype=bool,
         )
 
     def __str__(self):
