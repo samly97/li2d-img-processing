@@ -1,6 +1,6 @@
-from create_micro_pngs import create_micro_png
 from preprocessing.data import COMSOL_Electrochem_CSV
 from preprocessing.process import Microstructure_Backdoor
+from preprocessing.process import _Interpolate_FEM_Data
 
 from etl.extract import _Extraction_Functionality, SOLmap
 
@@ -123,22 +123,14 @@ def get_voxelized_arrays(
     time: str,
 
 ):
-    # Create the "voxelized microstructure image"
-    microstructure = create_micro_png(
-        micro_info,
-        h_cell=100,
-        grid_size=1000,
-        scale=5,
-        pore_phase=65535,
-        solid_phase=30000,
-    )
+    # Assume the time column starts here in from the FEM csv data
+    TIME_START_COL = 2
 
     # Create the "voxelized solmap image"
     echem_csv_formatter = COMSOL_Electrochem_CSV()
     backdoor = Microstructure_Backdoor(
         echem_csv_formatter,
         micro_path,
-        microstructure,
         L=int(micro_info["length"]),
         h_cell=100,
         c_rate=c_rate,
@@ -148,6 +140,33 @@ def get_voxelized_arrays(
         scale=5,
     )
     solmap = backdoor.get_solmap()
+
+    # Create the "voxelized microstructure image"
+    #
+    # In effect this is what the `get_solmap` method does, but this does
+    # illustrate the slightly different workflows between creating a `solmap`
+    # and the `microstructure`
+    microstructure = _Interpolate_FEM_Data.create_solmap_image(
+        backdoor.experiment,
+        backdoor.c_rate,
+        TIME_START_COL,
+        np.ones(
+            (backdoor.h_cell * backdoor.scale, backdoor.L * backdoor.scale),
+            dtype=bool,
+        ),
+        backdoor.particles,
+        backdoor.L,
+        backdoor.h_cell,
+        backdoor.scale,
+        backdoor.grid_size,
+    )
+
+    solid_phase = microstructure > 0.0
+    pore_phase = ~solid_phase
+
+    microstructure = np.zeros_like(microstructure, dtype=np.uint16)
+    microstructure[pore_phase] = 65535
+    microstructure[solid_phase] = 30000
 
     return microstructure, solmap
 
