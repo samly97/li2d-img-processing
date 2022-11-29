@@ -25,7 +25,6 @@ class Microstructure_Backdoor():
         self,
         csv_formatter: COMSOL_Electrochem_CSV,
         micro_path: str,
-        microstructure: np.ndarray,
         L: int,
         h_cell: int,
         c_rate: str,
@@ -36,8 +35,6 @@ class Microstructure_Backdoor():
     ):
         self.csv_formatter = csv_formatter
         self.micro_path = micro_path
-
-        self.microstructure = microstructure
 
         self.L = L
         self.h_cell = h_cell
