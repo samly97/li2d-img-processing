@@ -4,6 +4,7 @@ import numpy as np
 import tensorflow as tf
 
 import scipy.ndimage as ndi
+from scipy.interpolate import griddata
 
 from etl.etl import ETL_2D
 from etl.etl import ETL_Functions
@@ -218,11 +219,12 @@ class _Create_ETL_Helpers():
 def electrode_sol_map_from_predictions(
     input_dataset: tf.data.Dataset,
     predicted_imgs: np.ndarray,
+    micro_mask: np.ndarray,
     L_electrode: int,
     norm_metadata: Tuple[int, int, int, float, int, int],
     batch_size: int,
     scale: int = 10,
-) -> np.ndarray:
+) -> Tuple[np.ndarray, Dict[str, float]]:
     r'''`electrode_sol_map_from_predictions` takes an electrode (in the form of
     an tf.data.Dataset) its predicted SOL output at a certain C-rate and time
     step to "patch" all the particles back into whole electrode, thus returning
@@ -258,13 +260,13 @@ def electrode_sol_map_from_predictions(
         dtype=np.float32,
     )
 
-    predicted_imgs = tf.data.Dataset.from_tensor_slices(predicted_imgs)
-    predicted_imgs = predicted_imgs.batch(batch_size)
+    predicted_imgs_ds = tf.data.Dataset.from_tensor_slices(predicted_imgs)
+    predicted_imgs_ds = predicted_imgs_ds.batch(batch_size)
 
     # For each input (image, mask, metadata) in the dataset, extract the color
     # from the Machine Learning output and place it in the coordinate in the
     # electrode.
-    for data_batch, pred_batch in zip(input_dataset, predicted_imgs):
+    for data_batch, pred_batch in zip(input_dataset, predicted_imgs_ds):
 
         in_batch, _ = data_batch
         _, _, meta_batch = in_batch
@@ -331,7 +333,35 @@ def electrode_sol_map_from_predictions(
                 :,
             ] = zoomed_pred_img.numpy()[sol_Y, sol_X, :]
 
-    return solmap
+    solmap_mask = solmap > 0.0
+
+    # Find pixels that are not common to both the `microstructure` and `solmap`
+    mismatched_pixels = np.logical_xor(micro_mask, solmap_mask)
+    # Filter extra particle - only pixels in found in `micro_mask` are valid
+    mismatched_pixels = micro_mask * mismatched_pixels
+
+    # Perform nearest neighbour interpolation for the `missing_indices` using
+    # data from the `existing_sol_indices`
+    missing_indices = np.where(mismatched_pixels)
+    existing_sol_indices = np.where(solmap_mask)
+
+    interpolated_sol_values = griddata(
+        existing_sol_indices,
+        solmap[existing_sol_indices],
+        missing_indices,
+        method="nearest",
+    )
+
+    solmap[missing_indices] = interpolated_sol_values
+
+    # Return some statistics to show how many pixels were missing
+    stats = {
+        "num_pix_missing": np.sum(mismatched_pixels),
+        "per_pix_missing": np.sum(mismatched_pixels) / np.prod(
+            solmap_mask.shape) * 100,
+    }
+
+    return solmap, stats
 
 
 class _ML_Pred_to_Solmap():
