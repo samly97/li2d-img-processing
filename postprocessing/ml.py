@@ -3,9 +3,7 @@ from typing import Tuple, List, Dict
 import numpy as np
 import tensorflow as tf
 
-from utils.numerics import get_coords_in_circle
-from utils.numerics import get_inscribing_meshgrid
-from utils.image import zoom_image
+import scipy.ndimage as ndi
 
 from etl.etl import ETL_2D
 from etl.etl import ETL_Functions
@@ -222,10 +220,10 @@ def electrode_sol_map_from_predictions(
     predicted_imgs: np.ndarray,
     L_electrode: int,
     norm_metadata: Tuple[int, int, int, float, int, int],
+    batch_size: int,
     scale: int = 10,
-    grid_size: int = 1000,
 ) -> np.ndarray:
-    r''' electrode_sol_map_from_predictions takes an electrode (in the form of
+    r'''`electrode_sol_map_from_predictions` takes an electrode (in the form of
     an tf.data.Dataset) its predicted SOL output at a certain C-rate and time
     step to "patch" all the particles back into whole electrode, thus returning
     a "State-of-Lithiation"-map output.
@@ -251,64 +249,168 @@ def electrode_sol_map_from_predictions(
         for computational efficiency.
     '''
 
-    _, h_cell, R_norm, zoom_norm, _, _ = norm_metadata
+    tf.experimental.numpy.experimental_enable_numpy_behavior()
 
-    electrode = np.zeros(
-        shape=(h_cell * scale, L_electrode * scale, 1),
-        dtype=float,
+    _, h_cell, _, zoom_norm, _, _ = norm_metadata
+
+    solmap = np.zeros(
+        (h_cell * scale, L_electrode * scale, 1),
+        dtype=np.float32,
     )
 
-    # For each input (image, metadata) in the dataset, extract the color from
-    # the Machine Learning output and place it in the coordinate in the
+    predicted_imgs = tf.data.Dataset.from_tensor_slices(predicted_imgs)
+    predicted_imgs = predicted_imgs.batch(batch_size)
+
+    # For each input (image, mask, metadata) in the dataset, extract the color
+    # from the Machine Learning output and place it in the coordinate in the
     # electrode.
-    img_idx = 0
-    for batch in input_dataset:
-        input_batch, _ = batch
-        _, meta_array = input_batch
+    for data_batch, pred_batch in zip(input_dataset, predicted_imgs):
 
-        for meta in meta_array:
+        in_batch, _ = data_batch
+        _, _, meta_batch = in_batch
 
-            meta = meta.numpy()
-            x = meta[0] * L_electrode
-            y = meta[1] * h_cell
-            R = meta[2] * R_norm
-            zoom_factor = meta[4] * zoom_norm
+        x_centers = _ML_Pred_to_Solmap.get_meta_elem("x", meta_batch) * \
+            tf.cast(L_electrode, tf.float32)
+        y_centers = _ML_Pred_to_Solmap.get_meta_elem("y", meta_batch) * \
+            tf.cast(h_cell, tf.float32)
+        zoom_factors = _ML_Pred_to_Solmap.get_meta_elem(
+            "zoom_factor", meta_batch) * tf.cast(zoom_norm, tf.float32)
 
-            predicted_img = predicted_imgs[img_idx]
-            img_size, _, _ = predicted_img.shape
-            unzoomed_img, _ = zoom_image(
-                predicted_img,
-                img_size / zoom_factor,
+        # Zoom images back to their original sizes
+        unzoomed_imgs = tf.map_fn(
+            _ML_Pred_to_Solmap.zoom_tensor_ret_img,
+            (pred_batch, zoom_factors),
+            fn_output_signature=tf.RaggedTensorSpec(
+                shape=None,
+                ragged_rank=1,
+                dtype=tf.float32,
+            )
+        )
+
+        # Get the center pixel of a prediction image
+        prediction_centers = tf.map_fn(
+            lambda im: tf.math.scalar_mul(
+                tf.cast(1/2, tf.float32),
+                tf.cast(tf.shape(im.to_tensor())[0], tf.float32),
+            ),
+            unzoomed_imgs,
+            fn_output_signature=tf.TensorSpec(
+                shape=(),
+                dtype=tf.float32,
+            )
+        )
+
+        # Get a tensor of masks for the SoL values (RaggedTensor)
+        sol_value_mask = tf.math.greater(unzoomed_imgs, 0.0)
+
+        for batch_idx in range(pred_batch.shape[0]):
+            x = x_centers[batch_idx]
+            y = y_centers[batch_idx]
+            center = prediction_centers[batch_idx]
+
+            zoomed_pred_img = unzoomed_imgs[batch_idx].to_tensor()
+
+            # Meshgrids where a non-zero pixel is the x or y coordinate of a
+            # pixel which has a predicted SoL value.
+            sol_X, sol_Y = _ML_Pred_to_Solmap.sol_pixel_meshgrid(
+                sol_value_mask[batch_idx])
+
+            # Translate the meshgrids so we are:
+            #   - subtract predicted image center (circle centered at (0, 0))
+            #   - add the scaled (x, y) center particle coordinates
+            elec_X, elec_Y = _ML_Pred_to_Solmap.sol_to_electrode_meshgrid(
+                (sol_X, sol_Y, sol_value_mask[batch_idx], x, y, center),
+                scale,
             )
 
-            unzoomed_img_size, _, _ = unzoomed_img.shape
-            center = unzoomed_img_size / 2
-
-            # The xx, yy coordinates could be shared between the electrode and
-            # the ML output. The coordinates need to be translated to be in the
-            # center of the image for resuse for the ML output images.
-            xx, yy = get_inscribing_meshgrid(x, y, R, grid_size, to_um=1)
-            xx, yy = get_coords_in_circle(x, y, R, (xx, yy), to_um=1)
-
-            col_xx = np.copy(xx) - x
-            col_yy = np.copy(yy) - y
-
-            col_xx = np.floor(col_xx + center).astype(np.uint64)
-            col_yy = np.floor(col_yy + center).astype(np.uint64)
-
-            electrode_xx = np.ceil(xx * scale).astype(np.uint64) - 1
-            electrode_yy = np.ceil(yy * scale).astype(np.uint64) - 1
-
-            electrode[
-                electrode_yy,
-                electrode_xx,
+            # Take SoL values from the "unzoomed" prediction images and place
+            # it in the corresponding meshgrid location in the SoLmap
+            solmap[
+                elec_Y,
+                elec_X,
                 :,
-            ] = unzoomed_img[
-                col_yy,
-                col_xx,
-                :,
-            ]
+            ] = zoomed_pred_img.numpy()[sol_Y, sol_X, :]
 
-            img_idx += 1
+    return solmap
 
-    return electrode
+
+class _ML_Pred_to_Solmap():
+
+    @ staticmethod
+    def get_meta_elem(
+        elem: str,
+        meta_tensor: tf.types.experimental.TensorLike
+    ):
+        return tf.gather(
+            meta_tensor,
+            typings.META_INDICES[elem],
+            axis=1,
+        )
+
+    @ staticmethod
+    def zoom_tensor_ret_img(inputs):
+        img, zoom_factor = inputs
+
+        out_img_size = 1 / zoom_factor
+
+        unzoomed_img = tf.py_function(
+            lambda arr: ndi.zoom(
+                arr, (out_img_size, out_img_size, 1), order=0
+            ),
+            [img], tf.float32,
+        )
+
+        unzoomed_img = tf.RaggedTensor.from_tensor(unzoomed_img)
+        return unzoomed_img
+
+    @ staticmethod
+    def sol_pixel_meshgrid(sol_value_mask):
+        # Get the pixel location of where SoL values are in the direct Machine
+        # Learning predictions
+
+        zoomed_im = sol_value_mask.to_tensor()
+        zoomed_img_size = tf.shape(zoomed_im)[0]
+
+        # Linearly spaced array
+        img_linspace = tf.range(0, zoomed_img_size)
+
+        # Meshgrid with coordinates corresponding to `zoomed_im` size
+        X, Y = tf.meshgrid(img_linspace, img_linspace)
+
+        def fn(T): return tf.math.multiply(
+            T, tf.cast(zoomed_im[:, :, 0], tf.int32))
+
+        X = fn(X)
+        Y = fn(Y)
+
+        return X, Y
+
+    @ staticmethod
+    def sol_to_electrode_meshgrid(tup, scale):
+        # There may be some controversy in choosing which pixel would be the
+        # center either using `ceil`, `floor`, or `round` approach.
+        #
+        # For odd-sized images this is easy, it's just 1/2 the image rounded
+        # down, but for evenly-sized images this might be controversial:
+        #   5-pixels:
+        #       5 / 2 = 2.5 ==> 2 ([] [] [x] [] [])
+        #   4-pixels:
+        #       4 / 2 = 2   ==> 2 ([] [x] [] [])
+
+        X, Y, sol_value_mask, x, y, center = tup
+
+        sol_value_mask = sol_value_mask.to_tensor()
+
+        def fn(T, coord):
+            return tf.cast(sol_value_mask, tf.float32) * scale * coord + \
+                (tf.cast(tf.expand_dims(T, axis=-1), tf.float32) - center)
+
+        # Translate SoL meshgrid to its location in the electrode
+        elec_X = tf.cast(tf.math.round(fn(X, x)), tf.int64)
+        elec_Y = tf.cast(tf.math.round(fn(Y, y)), tf.int64)
+
+        # Reshape since meshgrid should be (dim, dim) and not (dim, dim, 1)
+        elec_X = elec_X[:, :, 0]
+        elec_Y = elec_Y[:, :, 0]
+
+        return elec_X, elec_Y
