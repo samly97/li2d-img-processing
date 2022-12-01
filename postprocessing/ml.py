@@ -354,6 +354,10 @@ def electrode_sol_map_from_predictions(
 
     solmap[missing_indices] = interpolated_sol_values
 
+    # Another round of masking pixels (excess)
+    excess_pixels = np.logical_xor(solmap > 0.0, micro_mask)
+    solmap = ~excess_pixels * solmap
+
     # Return some statistics to show how many pixels were missing
     stats = {
         "num_pix_missing": np.sum(mismatched_pixels),
