@@ -3,7 +3,6 @@ from typing import Tuple, List
 import numpy as np
 from scipy.ndimage import zoom
 from math import ceil
-import tensorflow as tf
 
 from utils import typings
 from utils.numerics import get_electrode_meshgrid
@@ -90,128 +89,6 @@ def zoom_image(
 
     ret_im = zoom(img, zoom_tuple, order=order)
     return ret_im, zoom_factor
-
-
-def create_circle_mask(
-    width_wrt_radius: float,
-    scale: int = 10,
-) -> np.ndarray:
-    r''' create_circle_mask creates a boolean circle centered in a square
-    image. The distance from the center of the circle to the edge is specified
-    using "width_wrt_radius".
-    '''
-
-    # These values were arbitrarily chosen
-    _a_big_number = 500
-    _R = 10.0
-
-    x = int(_a_big_number / 2) * scale
-    y = x
-
-    micro_im = np.zeros(
-        (_a_big_number * scale, _a_big_number * scale, 1),
-        dtype=bool,
-    )
-
-    xx, yy = get_electrode_meshgrid(_a_big_number, _a_big_number, scale)
-
-    box_radius = ceil(_R * scale * width_wrt_radius)
-    in_circ = np.sqrt((yy * scale - y) ** 2 +
-                      (xx * scale - x) ** 2) <= _R * scale
-
-    micro_im[in_circ] = True
-
-    ret_im = micro_im[
-        y - box_radius: y + box_radius - 1,
-        x - box_radius: x + box_radius - 1,
-        :,
-    ]
-
-    return ret_im
-
-
-def circle_mask_as_vector_of_indices(
-    width_wrt_radius: float,
-    img_size: int,
-    scale: int = 10,
-) -> tf.Tensor:
-    r''' `circle_mask_as_vector_of_indices` takes a determines the location of
-    a circular particle and determines the indices of where the particle is as
-    a reshaped vector.
-
-    Inputs:
-    - width_wrt_radius: float; the distance from the center of the particle to
-        the edge of the image. E.g., `width_wrt_radius = 3` fits 3 radii in
-        that distance.
-    - img_size: int; the image size fed to the Neural Network.
-    - scale: int; magnifying factor (scale * 1 um) for higher resolution images
-
-    Outputs:
-    - mask: the indices of where the particle is if an [img_size, img_size]
-        image was reshaped into a vector. `mask` is a `tf.Tensor` of
-        `dtype=tf.int32`.
-    '''
-
-    mask = create_circle_mask(
-        width_wrt_radius,
-        scale=scale,
-    )
-    mask_tf = tf.cast(mask, dtype=tf.int32)
-    mask_tf = tf.image.resize(mask_tf, (img_size, img_size))
-
-    mask = mask_tf.numpy()
-    # Check location of particle
-    mask = np.all(mask == [1], axis=-1)
-
-    # Reshape into a vector
-    mask = np.reshape(mask, img_size * img_size)
-
-    # Indices (or location) of particle
-    mask = np.where(mask)
-    mask = np.array(mask)
-    mask = np.reshape(mask, (mask.size))
-
-    mask = tf.cast(
-        mask,
-        dtype=tf.int32
-    )
-
-    return mask
-
-
-def tf_circle_mask(
-    tf_img_size: int,
-    width_wrt_radius: float,
-    particle_color: np.ndarray,
-    scale: int = 10,
-) -> tf.Tensor:
-    r'''
-    Inputs:
-    - particle_color: color specified should be integers, e.g. [0, 128, 0]
-    '''
-
-    # Gets mask where `True` represents where the particle lives
-    mask = create_circle_mask(
-        width_wrt_radius,
-        scale,
-    )
-
-    Y, X, _ = mask.shape
-    mask = np.reshape(mask, (Y * X * 1))
-
-    blank_img = np.zeros(
-        (Y, X, 3),
-        dtype=np.float32
-    )
-    blank_img = np.reshape(blank_img, (Y * X, 3))
-    blank_img[mask, :] = particle_color / 255.
-    blank_img = np.reshape(blank_img, (Y, X, 3))
-
-    ret_im = tf.convert_to_tensor(blank_img)
-    ret_im = tf.cast(ret_im, tf.float32)
-    ret_im = tf.image.resize(ret_im, (tf_img_size, tf_img_size))
-
-    return ret_im
 
 
 def electrode_mask_2D(
