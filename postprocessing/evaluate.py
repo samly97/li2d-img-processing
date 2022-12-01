@@ -1,21 +1,19 @@
+from tqdm import tqdm
+import time
+import os
+from postprocessing.ml import electrode_sol_map_from_predictions
+from postprocessing.ml import Microstructure_to_ETL
+from utils import typings
+from utils.io import load_json
+import tensorflow as tf
+import numpy as np
 from typing import Dict, List, Tuple
 
 import matplotlib.pyplot as plt
 from matplotlib import colors
-import numpy as np
 
-import tensorflow as tf
-
-from utils.io import load_json
-from utils import typings
-
-from postprocessing.ml import Microstructure_to_ETL
-from postprocessing.ml import electrode_sol_map_from_predictions
-
-import os
-import time
-
-from tqdm import tqdm
+import porespy as ps
+ps.visualization.set_mpl_style()
 
 
 class Create_Predicted_Solmaps():
@@ -431,73 +429,86 @@ class Plot_Solmap():
         return solmap
 
 
-def plot_sol_profile(
-    ml_solmap: np.ndarray,
-    comsol_solmap: np.ndarray,
-    path: str,
-    timestep: float,
-    scale: int = 5,
-):
-    def get_sol_profile(solmap: np.ndarray):
+class Plot_Sol_Profile():
+
+    @staticmethod
+    def plot_and_save_imgs(
+        predicted_solmap: np.ndarray,
+        fem_solmap: np.ndarray,
+        save_path: str,
+        timestep: float,
+        scale: int = 5,
+    ) -> None:
+        Plot_Sol_Profile._plot_sol_profile(
+            predicted_solmap, timestep, save_path, "ML", scale)
+        Plot_Sol_Profile._plot_sol_profile(
+            fem_solmap, timestep, save_path, "FEM", scale)
+
+    @staticmethod
+    def _plot_sol_profile(
+        solmap: np.ndarray,
+        timestep: float,
+        save_path: str,
+        source: str,
+        scale: int,
+    ) -> None:
+        (
+            (x, sol_dist),
+            (x_length, sol_length_mean)
+        ) = Plot_Sol_Profile._get_sol_plot_data(solmap)
+
+        plt.scatter(np.array(x) / scale, sol_dist, c="#add8e6", marker=".",
+                    s=0.01, edgecolors="k", alpha=0.5)
+        plt.plot(np.array(x_length) / scale, sol_length_mean, 'bo')
+
+        plt.axis([0, np.max(np.array(x) / scale), 0, 1])
+        plt.xlabel("Distance from the Separator [$\mu$m]")
+        plt.ylabel("SoL [1]")
+        plt.title("%s - SOL Distribution at t=%.2fs" % (source, timestep))
+
+        plt.savefig(os.path.join(save_path, "%s_sol_dist_%s.png" %
+                    (source, timestep)))
+        plt.close('all')
+
+    @staticmethod
+    def _get_sol_plot_data(solmap: np.ndarray):
         # Get coordinates where the particles are lithiated
         coords = np.where(solmap != 0)
-        y_particle, x_particle, _ = coords
+        y_nmc, x_nmc, _ = coords
 
         # Length of electrode in pixels
-        x_max = np.max(x_particle)
+        x_max = np.max(x_nmc)
 
-        y_particle = list(y_particle)
-        x_particle = list(x_particle)
+        y_nmc = y_nmc.tolist()
+        x_nmc = x_nmc.tolist()
 
-        # (x,y) pairing of (length, SoL)
-        x_sol_arr = [(x, solmap[y, x, :])
-                     for (y, x) in zip(y_particle, x_particle)]
+        # (x, y) pairing of (length, SoL)
+        x_sol_arr = [(x, solmap[y, x, :]) for (y, x) in zip(y_nmc, x_nmc)]
 
-        # Store list of SoL as fn of x
-        sol_fn_of_L: Dict[float, List[float]] = {}
+        # State-of-Lithiation as a function of electrode length
+        sol_fn_of_L: Dict[int, List[float]] = {}
         for tup in x_sol_arr:
             x, sol = tup
             sol = list(sol)
 
-            temp_arr = sol_fn_of_L.get(x, [])
+            temp_arr: List[float] = sol_fn_of_L.get(x, [])
             temp_arr.extend(sol)
             sol_fn_of_L[x] = temp_arr
 
-        mean_sol_fn_of_L: Dict[float, float] = {}
-        # Find the average SoL at location x in electrode
+        sol_mean_fn_of_L: Dict[int, float] = {}
         for tup in x_sol_arr:
             x, _ = tup
-            mean_sol_fn_of_L[x] = float(np.mean(np.array(sol_fn_of_L.get(x))))
+            sol_mean_fn_of_L[x] = float(np.mean(np.array(sol_fn_of_L.get(x))))
 
-        # Unpack SoL Distribution
+        # The "whole" SoL
         x_sol_arr = list(zip(*x_sol_arr))
         x, sol_dist = x_sol_arr
 
         # Get the mean SoL
-        x_length = [x_coord for x_coord in range(0, x_max)]
-        sol_length_mean = [mean_sol_fn_of_L.get(x) for x in x_length]
+        x_length = [length for length in range(0, x_max)]
+        sol_length_mean = [sol_mean_fn_of_L.get(x) for x in x_length]
 
         return (
             (x, sol_dist),
             (x_length, sol_length_mean),
         )
-
-    def plot(source, solmap):
-        (
-            (x, sol_dist),
-            (x_length, sol_length_mean),
-        ) = get_sol_profile(solmap)
-
-        plt.plot(np.array(x) / scale, sol_dist, 'lightblue')
-        plt.plot(np.array(x_length) / scale, sol_length_mean, 'bo')
-
-        plt.axis([0, np.max(np.array(x)) / scale, 0, 1])
-        plt.xlabel("Distance from the Separator [$\mu$m]")
-        plt.ylabel("SoL [1]")
-        plt.title("%s - SOL Distribution at t=%.2fs" % (source, timestep))
-        plt.savefig(os.path.join(path, "%s_sol_dist_%s.png" %
-                    (source, timestep)))
-        plt.close('all')
-
-    plot("ML", ml_solmap)
-    plot("COMSOL", comsol_solmap)
