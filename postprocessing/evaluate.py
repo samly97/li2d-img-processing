@@ -1,6 +1,7 @@
 from typing import Dict, List, Tuple
 
 import matplotlib.pyplot as plt
+from matplotlib import colors
 import numpy as np
 
 import tensorflow as tf
@@ -351,54 +352,83 @@ class Create_Predicted_Solmaps():
         return filepath
 
 
-def save_color_img(
-    ml_solmap: np.ndarray,
-    comsol_solmap: np.ndarray,
-    path: str,
-    timestep: float,
-):
-    try:
-        os.mkdir(path)
-    except FileExistsError:
-        pass
+class Plot_Solmap():
 
-    # Don't mutate original data
-    ml_solmap = np.copy(ml_solmap)
-    comsol_solmap = np.copy(comsol_solmap)
+    @staticmethod
+    def plot_and_save_imgs(
+        predicted_solmap: np.ndarray,
+        fem_solmap: np.ndarray,
+        save_path: str,
+        timestep: float,
+        cs_min: int = 300,
+        cs_max: int = 48900,
+    ) -> None:
+        # Don't mutate original data
+        predicted_solmap = np.copy(predicted_solmap)
+        fem_solmap = np.copy(fem_solmap)
 
-    # Masks to get rid of 0s
-    mask_ml = ml_solmap == 0
-    mask_comsol = comsol_solmap == 0
-
-    ml_solmap[mask_ml] = np.nan
-    comsol_solmap[mask_comsol] = np.nan
-
-    def get_min_max(ml_solmap, comsol_solmap):
-        ml_min = np.min(ml_solmap[~mask_ml])
-        comsol_min = np.min(comsol_solmap[~mask_comsol])
-
-        ml_max = np.max(ml_solmap[~mask_ml])
-        comsol_max = np.max(comsol_solmap[~mask_comsol])
-
-        _min = ml_min if ml_min < comsol_min else comsol_min
-        _max = ml_max if ml_max > comsol_max else comsol_max
-
-        return (_min, _max)
-
-    def plot(im, source, timestep):
-        plt.axis('off')
-        plt.imshow(im, cmap="plasma")
-        plt.colorbar()
-        plt.clim(_min, _max)
-        plt.savefig(
-            os.path.join(path, "%s_%s.png" % (source, str(timestep)))
+        predicted_solmap = Plot_Solmap._rescale_solmap(
+            predicted_solmap, cs_min, cs_max,
         )
-        plt.close('all')
+        fem_solmap = Plot_Solmap._rescale_solmap(
+            fem_solmap, cs_min, cs_max,
+        )
 
-    (_min, _max) = get_min_max(ml_solmap, comsol_solmap)
+        Plot_Solmap._plot_solmap(predicted_solmap, save_path, "ML", timestep)
+        Plot_Solmap._plot_solmap(fem_solmap, save_path, "FEM", timestep)
+        Plot_Solmap._plot_solmap_err(
+            predicted_solmap, fem_solmap, save_path, timestep,
+        )
 
-    plot(ml_solmap, "ml", timestep)
-    plot(comsol_solmap, "comsol", timestep)
+    @staticmethod
+    def _plot_solmap(
+        solmap: np.ndarray,
+        save_path: str,
+        source: str,
+        timestep: float,
+    ) -> None:
+        plt.axis('off')
+        plt.imshow(solmap, norm=colors.LogNorm(vmin=1e-3, vmax=1))
+        clb = plt.colorbar()
+        clb.ax.set_title('SoL')
+        plt.savefig(
+            os.path.join(save_path, "%s_%s.png" % (source, str(timestep)))
+        )
+        plt.close("all")
+
+    @staticmethod
+    def _plot_solmap_err(
+        predicted_solmap: np.ndarray,
+        fem_solmap: np.ndarray,
+        save_path: str,
+        timestep: float,
+    ) -> None:
+        err_im = np.abs(predicted_solmap - fem_solmap)
+
+        plt.axis('off')
+        plt.imshow(err_im, norm=colors.LogNorm(vmin=1e-3, vmax=1))
+        clb = plt.colorbar()
+        clb.ax.set_title('SoL')
+        plt.savefig(
+            os.path.join(save_path, "err_%s.png" % str(timestep))
+        )
+        plt.close("all")
+
+    @staticmethod
+    def _rescale_solmap(
+        solmap: np.ndarray,
+        cs_min: int,
+        cs_max: int,
+    ) -> np.ndarray:
+
+        mask_not_sol = solmap == 0
+        solmap[mask_not_sol] = np.nan
+
+        # Rescale based on maximum and minimum concentrations
+        solmap[~mask_not_sol] = (solmap[~mask_not_sol] * cs_max - cs_min) \
+            / (cs_max - cs_min)
+
+        return solmap
 
 
 def plot_sol_profile(
