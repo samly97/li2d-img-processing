@@ -12,6 +12,8 @@ from typing import Dict, List, Tuple
 import matplotlib.pyplot as plt
 from matplotlib import colors
 
+import pandas as pd
+
 import porespy as ps
 ps.visualization.set_mpl_style()
 
@@ -358,6 +360,7 @@ class Plot_Solmap():
         fem_solmap: np.ndarray,
         save_path: str,
         timestep: float,
+        logscale_error: bool = True,
         cs_min: int = 300,
         cs_max: int = 48900,
     ) -> None:
@@ -372,11 +375,35 @@ class Plot_Solmap():
             fem_solmap, cs_min, cs_max,
         )
 
-        Plot_Solmap._plot_solmap(predicted_solmap, save_path, "ML", timestep)
-        Plot_Solmap._plot_solmap(fem_solmap, save_path, "FEM", timestep)
-        Plot_Solmap._plot_solmap_err(
-            predicted_solmap, fem_solmap, save_path, timestep,
+        min_sol, max_sol = Plot_Solmap._get_min_and_max(
+            predicted_solmap, fem_solmap,
         )
+
+        Plot_Solmap._plot_solmap(predicted_solmap, save_path, "ML", timestep,
+                                 min_sol, max_sol)
+        Plot_Solmap._plot_solmap(fem_solmap, save_path, "FEM", timestep,
+                                 min_sol, max_sol)
+        Plot_Solmap._plot_solmap_err(
+            predicted_solmap, fem_solmap, save_path, timestep, logscale_error,
+        )
+
+    @staticmethod
+    def _get_min_and_max(
+        pred_solmap: np.ndarray,
+        fem_solmap: np.ndarray,
+    ):
+        nan_mask = np.isnan(fem_solmap)
+
+        min_pred = np.min(pred_solmap[~nan_mask])
+        min_fem = np.min(fem_solmap[~nan_mask])
+
+        max_pred = np.max(pred_solmap[~nan_mask])
+        max_fem = np.max(fem_solmap[~nan_mask])
+
+        min_sol = min_pred if min_pred < min_fem else min_fem
+        max_sol = max_pred if max_pred > max_fem else max_fem
+
+        return (min_sol, max_sol)
 
     @staticmethod
     def _plot_solmap(
@@ -384,9 +411,11 @@ class Plot_Solmap():
         save_path: str,
         source: str,
         timestep: float,
+        min_c: float,
+        max_c: float,
     ) -> None:
         plt.axis('off')
-        plt.imshow(solmap, norm=colors.LogNorm(vmin=1e-3, vmax=1))
+        plt.imshow(solmap, vmin=min_c, vmax=max_c)
         clb = plt.colorbar()
         clb.ax.set_title('SoL')
         plt.savefig(
@@ -400,13 +429,21 @@ class Plot_Solmap():
         fem_solmap: np.ndarray,
         save_path: str,
         timestep: float,
+        logscale_error: bool,
     ) -> None:
-        err_im = np.abs(predicted_solmap - fem_solmap)
+        err_im = np.abs(predicted_solmap - fem_solmap) / fem_solmap * 100
 
         plt.axis('off')
-        plt.imshow(err_im, norm=colors.LogNorm(vmin=1e-3, vmax=1))
+        if logscale_error:
+            plt.imshow(err_im, norm=colors.LogNorm(
+                vmin=1,
+                vmax=100,
+            ))
+        else:
+            plt.imshow(err_im, vmin=0, vmax=100)
+
         clb = plt.colorbar()
-        clb.ax.set_title('SoL')
+        clb.ax.set_title('Relative Error %')
         plt.savefig(
             os.path.join(save_path, "err_%s.png" % str(timestep))
         )
@@ -438,11 +475,64 @@ class Plot_Sol_Profile():
         save_path: str,
         timestep: float,
         scale: int = 5,
+        logscale_error: bool = False,
     ) -> None:
         Plot_Sol_Profile._plot_sol_profile(
             predicted_solmap, timestep, save_path, "ML", scale)
         Plot_Sol_Profile._plot_sol_profile(
             fem_solmap, timestep, save_path, "FEM", scale)
+        Plot_Sol_Profile._plot_difference(
+            predicted_solmap, fem_solmap, timestep, save_path, "Diff", scale,
+            logscale_error,
+        )
+
+    @staticmethod
+    def _plot_difference(
+        pred_solmap: np.ndarray,
+        fem_solmap: np.ndarray,
+        timestep: float,
+        save_path: str,
+        source: str,
+        scale: int,
+        logscale_error: bool,
+    ) -> None:
+        pred = Plot_Sol_Profile._get_sol_plot_data(pred_solmap)
+        fem = Plot_Sol_Profile._get_sol_plot_data(fem_solmap)
+
+        _, pred_info = pred
+        _, fem_info = fem
+
+        pred_x, pred_sol = pred_info
+        _, fem_sol = fem_info
+
+        df = pd.DataFrame({
+            "pred_x": np.array(pred_x),
+            "pred_sol": np.array(pred_sol),
+            "fem_sol": np.array(fem_sol),
+        })
+
+        df = df.dropna()
+
+        pred_x = df.iloc[:, 0].to_numpy()
+        pred_sol = df.iloc[:, 1].to_numpy()
+        fem_sol = df.iloc[:, 2].to_numpy()
+
+        error = np.abs(pred_sol - fem_sol) / fem_sol * 100
+
+        ax = plt.figure()
+        ax = plt.gca()
+
+        ax.scatter(pred_x / scale, error, marker=".", s=10)
+        if logscale_error:
+            ax.set_yscale('log')
+
+        ax.set_ylim(1 if logscale_error else 0, 100)
+        ax.set_ylabel("Absolute Relative Error %")
+        ax.set_xlabel("Distance from the Separator [$\mu$m]")
+
+        plt.savefig(os.path.join(save_path, "%s_sol_dist_%s.png" %
+                    (source, timestep)))
+        plt.close('all')
 
     @staticmethod
     def _plot_sol_profile(
