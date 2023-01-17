@@ -325,8 +325,14 @@ def electrode_sol_map_from_predictions(
                 scale,
             )
 
+            elec_X = elec_X.numpy()
+            elec_Y = elec_Y.numpy()
+
             # Take SoL values from the "unzoomed" prediction images and place
             # it in the corresponding meshgrid location in the SoLmap
+            elec_Y[elec_Y >= np.shape(solmap)[0]] = np.shape(solmap)[0] - 1
+            elec_X[elec_X >= np.shape(solmap)[1]] = np.shape(solmap)[1] - 1
+
             solmap[
                 elec_Y,
                 elec_X,

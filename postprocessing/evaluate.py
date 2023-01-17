@@ -602,3 +602,66 @@ class Plot_Sol_Profile():
             (x, sol_dist),
             (x_length, sol_length_mean),
         )
+
+
+def extract_average_data_from_solmap(
+    solmap: np.ndarray,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    r''' Get the average data (SoL-profile) and the raw data so we don't have
+    to rerun these time consuming processing steps again. We could just process
+    what we want to visualize once we settle on the format.
+
+    Save these raw data:
+    - 1. Average SoL as a function of electrode length
+    - 2. Minimum SoL as a function of electrode length
+    - 3. Maximum SoL as a function of electrode length
+
+    Note that the length of electrode between 1. and (2. and 3.) may be
+    slightly different, but we could recover the `x_arr` of these simplying
+    doing something like:
+    - `x_arr = np.range(0, len(array)`
+    So let's decide on not storing `x_arr`.
+    '''
+
+    solmap_1d_data = Plot_Sol_Profile._get_sol_plot_data(solmap)
+
+    # `dist_data` is the set of all SoL values as a function of x; this data is
+    # just stored in a list so we need to process this.
+    #
+    # `avg_data` is the average SoL as a function of x.
+    dist_data, avg_data = solmap_1d_data
+    x_dist, sol_dist = dist_data
+
+    # Aggregate the SoL distribution in lists slotted at each pixel `x`
+    sol_dist_data: Dict[int, List[float]] = {}
+
+    for x, sol in zip(x_dist, sol_dist):
+        sol_dist_at_x = sol_dist_data.get(x, list())
+        sol_dist_at_x.extend(sol)
+
+        sol_dist_data[x] = sol_dist_at_x
+
+    x_arr = [key for key in sol_dist_data.keys()]
+    x_arr = sorted(x_arr)
+
+    # Now we will get the minimum and maximums of the SoL distribution
+    min_sol = []
+    max_sol = []
+    # std of the SoL at a pixel x
+    std_sol = []
+
+    for x in x_arr:
+
+        sol_dist_at_x_np = np.array(sol_dist_data[x])
+
+        min_sol.extend([np.min(sol_dist_at_x_np)])
+        max_sol.extend([np.max(sol_dist_at_x_np)])
+        std_sol.extend([np.std(sol_dist_at_x_np)])
+
+    min_sol_np = np.array(min_sol)
+    max_sol_np = np.array(max_sol)
+    std_sol_np = np.array(std_sol)
+
+    avg_sol_np = np.array(avg_data[1])
+
+    return avg_sol_np, min_sol_np, max_sol_np, std_sol_np
